@@ -10,6 +10,7 @@ import { deriveOpportunitiesFromEmails } from "@/lib/emailParser";
 import { generateDailyStrategy } from "@/lib/strategyEngine";
 
 const DEFAULT_PROFILE: UserProfile = {
+  name: "",
   careerGoals: "",
   professionalInterests: "",
   experienceLevel: "student",
@@ -71,6 +72,7 @@ interface AppStore extends AppState {
   generateAIInsights: (profile: UserProfile) => Promise<void>;
   setGoals: (goals: Goal[]) => void;
   computeStrategy: () => void;
+  resetStore: () => void;
 }
 
 export const useAppStore = create<AppStore>()(
@@ -306,6 +308,24 @@ Format your response as:
             g.id === goalId ? { ...g, confirmed, addedToPlan: confirmed } : g,
           ),
         }));
+      },
+
+      resetStore: () => {
+        set({
+          profile: DEFAULT_PROFILE,
+          goals: DEFAULT_GOALS,
+          calendarTasks: mockCalendarTasks,
+          conflicts: detectConflicts(mockCalendarTasks),
+          opportunities: rankOpportunities(
+            deriveOpportunitiesFromEmails(mockEmails),
+            DEFAULT_PROFILE,
+          ),
+          onboardingComplete: false,
+          aiInsight: '',
+          aiInsightLoading: false,
+          dailyStrategy: null,
+          activeTab: 'dashboard',
+        });
       },
     }),
     {

@@ -212,7 +212,7 @@ export default function Dashboard() {
 
       {/* Welcome */}
       <div className="bg-linear-to-r from-indigo-900/50 to-purple-900/50 rounded-2xl p-5 border border-indigo-800/50">
-        <h1 className="text-xl font-bold text-white mb-1">Good morning! 👋</h1>
+        <h1 className="text-xl font-bold text-white mb-1">Good morning{profile.name ? `, ${profile.name}` : ''}! 👋</h1>
         <p className="text-gray-300 text-sm">
           {profile.scheduleIntensity === 'intense' ? '🔥 Intense mode — let\'s crush it today.' :
            profile.scheduleIntensity === 'light' ? '🌱 Light mode — steady and sustainable.' :

@@ -66,6 +66,21 @@ export default function PreferencesView({ userId }: PreferencesProps) {
         </button>
       </div>
 
+      {/* Profile */}
+      <section className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-4">
+        <h2 className="font-semibold text-white">Profile</h2>
+        <div>
+          <label className="block text-sm text-gray-400 mb-1.5">Your name</label>
+          <input
+            type="text"
+            className="w-full bg-gray-700 text-white rounded-lg p-3 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
+            placeholder="e.g. Alex"
+            value={form.name ?? ''}
+            onChange={(e) => update('name', e.target.value)}
+          />
+        </div>
+      </section>
+
       {/* Career */}
       <section className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-4">
         <h2 className="font-semibold text-white">Career &amp; Interests</h2>

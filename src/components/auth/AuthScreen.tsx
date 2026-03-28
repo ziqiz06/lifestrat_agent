@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 
 interface Props {
-  onAuthenticated: () => void;
+  onAuthenticated: (user: { id: string; email?: string }) => void;
 }
 
 export default function AuthScreen({ onAuthenticated }: Props) {
@@ -25,9 +25,11 @@ export default function AuthScreen({ onAuthenticated }: Props) {
         if (error) throw error;
         setConfirmSent(true);
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        console.log('Attempting login to:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        console.log('Login result:', JSON.stringify({ user: data?.user?.id, error: error?.message }));
         if (error) throw error;
-        onAuthenticated();
+        onAuthenticated({ id: data.user.id, email: data.user.email });
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong');

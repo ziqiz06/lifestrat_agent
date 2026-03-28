@@ -1,6 +1,7 @@
 // Core types for the app
 
 export interface UserProfile {
+  name: string;
   careerGoals: string;
   professionalInterests: string;
   experienceLevel: "student" | "entry" | "mid" | "senior";

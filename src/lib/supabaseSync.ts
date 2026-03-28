@@ -64,26 +64,42 @@ export async function loadOpportunityDecisions(
   return map;
 }
 
-// Save calendar tasks (only user-added/confirmed ones, not the mock base set)
-export async function saveCalendarTasks(userId: string, tasks: CalendarTask[]) {
+// Save calendar state: user-added tasks + which mock tasks were removed
+export async function saveCalendarTasks(userId: string, tasks: CalendarTask[], allMockIds: string[]) {
   const supabase = createClient();
-  // Only persist tasks added by the user (id starts with 'opp-task-')
-  const userTasks = tasks.filter((t) => t.id.startsWith('opp-task-'));
+  const currentIds = new Set(tasks.map((t) => t.id));
+  // Tasks the user added (not in original mock set)
+  const userTasks = tasks.filter((t) => !allMockIds.includes(t.id));
+  // Mock tasks that were removed (resolved conflicts etc)
+  const removedMockIds = allMockIds.filter((id) => !currentIds.has(id));
+
   await supabase.from('calendar_tasks').delete().eq('user_id', userId);
-  if (userTasks.length === 0) return;
-  await supabase.from('calendar_tasks').insert(
-    userTasks.map((t) => ({ user_id: userId, task: t }))
-  );
+  await supabase.from('calendar_tasks').insert([
+    // Store user-added tasks as type 'added'
+    ...userTasks.map((t) => ({ user_id: userId, task: t, entry_type: 'added' })),
+    // Store removed mock IDs as type 'removed'
+    ...removedMockIds.map((id) => ({ user_id: userId, task: { id } as CalendarTask, entry_type: 'removed' })),
+  ]);
 }
 
-// Load user-added calendar tasks
-export async function loadCalendarTasks(userId: string): Promise<CalendarTask[]> {
+// Load calendar state
+export async function loadCalendarTasks(userId: string): Promise<{ added: CalendarTask[]; removedIds: string[] }> {
   const supabase = createClient();
   const { data } = await supabase
     .from('calendar_tasks')
-    .select('task')
+    .select('task, entry_type')
     .eq('user_id', userId);
-  return (data ?? []).map((row) => row.task as CalendarTask);
+
+  const added: CalendarTask[] = [];
+  const removedIds: string[] = [];
+  for (const row of data ?? []) {
+    if (row.entry_type === 'removed') {
+      removedIds.push((row.task as { id: string }).id);
+    } else {
+      added.push(row.task as CalendarTask);
+    }
+  }
+  return { added, removedIds };
 }
 
 // Save goals

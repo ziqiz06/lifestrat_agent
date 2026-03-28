@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { useAppStore } from '@/store/appStore';
 import AuthScreen from '@/components/auth/AuthScreen';
+import SignedOutPage from '@/components/auth/SignedOutPage';
 import OnboardingSurvey from '@/components/onboarding/OnboardingSurvey';
 import Navigation from '@/components/layout/Navigation';
 import Dashboard from '@/components/dashboard/Dashboard';
@@ -16,14 +17,18 @@ import {
   loadCalendarTasks, saveCalendarTasks,
   loadGoals, saveGoals,
 } from '@/lib/supabaseSync';
+import { mockCalendarTasks } from '@/data/mockCalendar';
+import { detectConflicts } from '@/lib/conflictDetection';
 
-type AppPhase = 'loading' | 'auth' | 'onboarding' | 'app';
+const MOCK_TASK_IDS = mockCalendarTasks.map((t) => t.id);
+
+type AppPhase = 'loading' | 'auth' | 'signedout' | 'onboarding' | 'app';
 
 export default function Home() {
   const {
     activeTab, completeOnboarding, generateAIInsights,
-    opportunities, setOpportunityInterest, calendarTasks,
-    goals, setGoals,
+    opportunities, calendarTasks,
+    goals, setGoals, resetStore,
   } = useAppStore();
 
   const [phase, setPhase] = useState<AppPhase>('loading');
@@ -34,89 +39,119 @@ export default function Home() {
   // Load user session and their data on mount
   useEffect(() => {
     const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      // Hard timeout — never stay on "Loading..." for more than 3 seconds
+      const timeout = setTimeout(() => setPhase('auth'), 3000);
 
-      if (!user) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session?.user) {
+          clearTimeout(timeout);
+          setPhase('auth');
+          return;
+        }
+
+        setUserId(session.user.id);
+        setUserEmail(session.user.email ?? null);
+
+        // Transition immediately based on local cache, then sync from Supabase
+        const localState = useAppStore.getState();
+        if (localState.onboardingComplete && localState.profile.completed) {
+          clearTimeout(timeout);
+          setPhase('app');
+          // Sync from Supabase in background — don't block
+          loadUserData(session.user.id);
+        } else {
+          await loadUserData(session.user.id);
+          clearTimeout(timeout);
+        }
+      } catch (e) {
+        console.error('Auth init error:', e);
+        clearTimeout(timeout);
         setPhase('auth');
-        return;
       }
-
-      setUserId(user.id);
-      setUserEmail(user.email ?? null);
-      await loadUserData(user.id);
     };
 
     init();
 
-    // Listen for auth changes (login/logout)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        setUserId(session.user.id);
-        setUserEmail(session.user.email ?? null);
-        await loadUserData(session.user.id);
-      } else if (event === 'SIGNED_OUT') {
-        setPhase('auth');
-        setUserId(null);
-      }
-    });
+    // Auth state listener — only used for token refresh, not login/logout
+    // Login is handled by onAuthenticated, logout by handleSignOut
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {});
 
     return () => subscription.unsubscribe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadUserData = async (uid: string) => {
-    // Load saved profile
-    const savedProfile = await loadProfile(uid);
+    // All DB work is best-effort — never block phase transitions
+    try {
+      const savedProfile = await loadProfile(uid);
+      if (!savedProfile) {
+        // No DB profile — check local cache, save it if present
+        const localState = useAppStore.getState();
+        if (localState.onboardingComplete && localState.profile.completed) {
+          saveProfile(uid, localState.profile).catch(() => {});
+        } else {
+          setPhase('onboarding');
+        }
+        return;
+      }
 
-    if (!savedProfile) {
-      setPhase('onboarding');
-      return;
-    }
+      // Restore profile from Supabase
+      completeOnboarding(savedProfile);
+      setPhase('app');
 
-    // Restore profile
-    completeOnboarding(savedProfile);
+      // Restore decisions, tasks, goals in background
+      const decisions = await loadOpportunityDecisions(uid);
+      useAppStore.setState((state) => ({
+        opportunities: state.opportunities.map((o) => {
+          const d = decisions[o.id];
+          return d ? { ...o, interested: d.interested, addedToCalendar: d.addedToCalendar } : o;
+        }),
+      }));
 
-    // Restore opportunity decisions
-    const decisions = await loadOpportunityDecisions(uid);
-    const store = useAppStore.getState();
-    for (const [oppId, decision] of Object.entries(decisions)) {
-      const opp = store.opportunities.find((o) => o.id === oppId);
-      if (opp) {
-        setOpportunityInterest(oppId, decision.interested);
+      const { added, removedIds } = await loadCalendarTasks(uid);
+      useAppStore.setState((state) => {
+        const removedSet = new Set(removedIds);
+        const existingIds = new Set(state.calendarTasks.map((t) => t.id));
+        // Remove mock tasks the user deleted, add user-added tasks back
+        const merged = [
+          ...state.calendarTasks.filter((t) => !removedSet.has(t.id)),
+          ...added.filter((t) => !existingIds.has(t.id)),
+        ];
+        return { calendarTasks: merged, conflicts: detectConflicts(merged) };
+      });
+
+      const savedGoals = await loadGoals(uid);
+      if (savedGoals) setGoals(savedGoals);
+    } catch (e) {
+      console.warn('Supabase sync error (non-fatal):', e);
+      // Fall back to local state
+      const localState = useAppStore.getState();
+      if (localState.onboardingComplete && localState.profile.completed) {
+        setPhase('app');
+      } else {
+        setPhase('onboarding');
       }
     }
-
-    // Restore user-added calendar tasks
-    const savedTasks = await loadCalendarTasks(uid);
-    // These are already in the store via addOpportunityToCalendar, but restore if missing
-    const currentTaskIds = new Set(useAppStore.getState().calendarTasks.map((t) => t.id));
-    for (const task of savedTasks) {
-      if (!currentTaskIds.has(task.id)) {
-        useAppStore.setState((state) => ({
-          calendarTasks: [...state.calendarTasks, task],
-        }));
-      }
-    }
-
-    // Restore goals
-    const savedGoals = await loadGoals(uid);
-    if (savedGoals) setGoals(savedGoals);
-
-    setPhase('app');
   };
 
   const handleOnboardingComplete = async (profile: UserProfile) => {
     completeOnboarding(profile);
     generateAIInsights(profile);
+    setPhase('app'); // transition immediately — don't block on DB
     if (userId) {
-      await saveProfile(userId, profile);
+      try { await saveProfile(userId, profile); } catch (e) { console.error('saveProfile failed:', e); }
     }
-    setPhase('app');
   };
 
   const handleSignOut = async () => {
+    setUserId(null);
+    setUserEmail(null);
+    resetStore(); // clear Zustand state
+    localStorage.removeItem('lifestrat-app-state'); // clear persisted cache
     await supabase.auth.signOut();
-    setPhase('auth');
+    setPhase('signedout');
   };
 
   // Auto-save opportunity decisions when they change
@@ -124,20 +159,20 @@ export default function Home() {
     if (!userId || phase !== 'app') return;
     const decided = opportunities.filter((o) => o.interested !== null);
     if (decided.length > 0) {
-      saveOpportunityDecisions(userId, opportunities);
+      saveOpportunityDecisions(userId, opportunities).catch(console.error);
     }
   }, [opportunities, userId, phase]);
 
   // Auto-save calendar tasks when they change
   useEffect(() => {
     if (!userId || phase !== 'app') return;
-    saveCalendarTasks(userId, calendarTasks);
+    saveCalendarTasks(userId, calendarTasks, MOCK_TASK_IDS).catch(console.error);
   }, [calendarTasks, userId, phase]);
 
   // Auto-save goals when they change
   useEffect(() => {
     if (!userId || phase !== 'app') return;
-    saveGoals(userId, goals);
+    saveGoals(userId, goals).catch(console.error);
   }, [goals, userId, phase]);
 
   if (phase === 'loading') {
@@ -151,8 +186,25 @@ export default function Home() {
     );
   }
 
+  if (phase === 'signedout') {
+    return <SignedOutPage onSignIn={() => setPhase('auth')} />;
+  }
+
   if (phase === 'auth') {
-    return <AuthScreen onAuthenticated={() => {}} />;
+    return <AuthScreen onAuthenticated={(user) => {
+      // Set user identity immediately — never block on DB
+      setUserId(user.id);
+      setUserEmail(user.email ?? null);
+      // Decide phase from local cache, then sync DB in background
+      const localState = useAppStore.getState();
+      if (localState.onboardingComplete && localState.profile.completed) {
+        setPhase('app');
+        loadUserData(user.id); // background sync, no await
+      } else {
+        setPhase('onboarding');
+        loadUserData(user.id); // background sync, may upgrade to 'app' if profile found
+      }
+    }} />;
   }
 
   if (phase === 'onboarding') {

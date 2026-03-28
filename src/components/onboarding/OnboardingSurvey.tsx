@@ -65,6 +65,18 @@ export default function OnboardingSurvey({ onComplete }: Props) {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
+              What's your name?
+            </label>
+            <input
+              type="text"
+              className="w-full bg-gray-700 text-white rounded-lg p-3 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+              placeholder="e.g. Alex"
+              value={form.name ?? ""}
+              onChange={(e) => update("name", e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               What are your main career goals?
             </label>
             <textarea
