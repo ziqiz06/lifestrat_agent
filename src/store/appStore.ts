@@ -3,10 +3,10 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { AppState, UserProfile, Goal, CalendarTask } from '@/types';
 import { mockEmails } from '@/data/mockEmails';
-import { mockOpportunities } from '@/data/mockOpportunities';
 import { mockCalendarTasks } from '@/data/mockCalendar';
 import { rankOpportunities } from '@/lib/opportunityRanking';
 import { detectConflicts } from '@/lib/conflictDetection';
+import { deriveOpportunitiesFromEmails } from '@/lib/emailParser';
 
 const DEFAULT_PROFILE: UserProfile = {
   careerGoals: '',
@@ -50,7 +50,7 @@ export const useAppStore = create<AppStore>()(
     (set, get) => ({
       profile: DEFAULT_PROFILE,
       emails: mockEmails,
-      opportunities: rankOpportunities(mockOpportunities, DEFAULT_PROFILE),
+      opportunities: rankOpportunities(deriveOpportunitiesFromEmails(mockEmails), DEFAULT_PROFILE),
       calendarTasks: mockCalendarTasks,
       conflicts: detectConflicts(mockCalendarTasks),
       goals: DEFAULT_GOALS,
@@ -239,6 +239,14 @@ Format your response as:
         }));
       },
     }),
-    { name: 'lifestrat-app-state' }
+    {
+      name: 'lifestrat-app-state',
+      // Never persist emails/opportunities — always load fresh from source files
+      partialize: (state) => {
+        const { emails, opportunities, aiInsight, aiInsightLoading, ...persisted } = state;
+        void emails; void opportunities; void aiInsight; void aiInsightLoading;
+        return persisted;
+      },
+    }
   )
 );
