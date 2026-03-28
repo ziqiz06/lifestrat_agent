@@ -4,24 +4,21 @@ import { useAppStore } from "@/store/appStore";
 import { CalendarTask, Conflict } from "@/types";
 
 // ── Grid constants ────────────────────────────────────────────────────────────
-const HOUR_HEIGHT = 64; // px per hour
-const START_HOUR = 7; // 7 am
-const END_HOUR = 24; // midnight
-const TOTAL_HOURS = END_HOUR - START_HOUR; // 17
-const TOTAL_HEIGHT = TOTAL_HOURS * HOUR_HEIGHT; // 1088 px
-const TIME_COL_W = 52; // px – left time-label column
+const HOUR_HEIGHT = 64;
+const START_HOUR = 7;
+const END_HOUR = 24;
+const TOTAL_HOURS = END_HOUR - START_HOUR;
+const TOTAL_HEIGHT = TOTAL_HOURS * HOUR_HEIGHT;
+const TIME_COL_W = 52;
 
 // ── Week helpers ──────────────────────────────────────────────────────────────
-// Base Monday: 2026-03-30 (the week containing most mock data)
 const BASE_MS = new Date("2026-03-30T00:00:00").getTime();
 const DAY_MS = 86_400_000;
 
 function getWeekDates(offset: number): string[] {
-  return Array.from({ length: 7 }, (_, i) => {
-    return new Date(BASE_MS + (offset * 7 + i) * DAY_MS)
-      .toISOString()
-      .slice(0, 10);
-  });
+  return Array.from({ length: 7 }, (_, i) =>
+    new Date(BASE_MS + (offset * 7 + i) * DAY_MS).toISOString().slice(0, 10),
+  );
 }
 
 function weekRangeLabel(dates: string[]): string {
@@ -45,8 +42,9 @@ function topPx(time: string): number {
 
 function heightPx(start: string, end: string): number {
   const s = Math.max(toMins(start), START_HOUR * 60);
+  const rawEnd = toMins(end);
   const e = Math.min(
-    toMins(end) === toMins(start) ? toMins(end) + 30 : toMins(end),
+    rawEnd <= toMins(start) ? toMins(start) + 30 : rawEnd,
     END_HOUR * 60,
   );
   return Math.max(((e - s) / 60) * HOUR_HEIGHT, 22);
@@ -67,7 +65,8 @@ function assignLanes(tasks: CalendarTask[]): LaidTask[] {
 
   const assigned: LaidTask[] = sorted.map((task) => {
     const s = toMins(task.startTime);
-    const e = toMins(task.endTime) <= s ? s + 30 : toMins(task.endTime);
+    const rawE = toMins(task.endTime);
+    const e = rawE <= s ? s + 30 : rawE;
     let lane = laneEnds.findIndex((end) => s >= end);
     if (lane === -1) {
       lane = laneEnds.length;
@@ -78,10 +77,10 @@ function assignLanes(tasks: CalendarTask[]): LaidTask[] {
     return { task, lane, laneCount: 1 };
   });
 
-  // Compute laneCount = total concurrent lanes for each task
   assigned.forEach((a) => {
     const s = toMins(a.task.startTime);
-    const e = toMins(a.task.endTime) <= s ? s + 30 : toMins(a.task.endTime);
+    const rawE = toMins(a.task.endTime);
+    const e = rawE <= s ? s + 30 : rawE;
     const maxLane = assigned
       .filter((b) => {
         const bs = toMins(b.task.startTime);
@@ -96,21 +95,28 @@ function assignLanes(tasks: CalendarTask[]): LaidTask[] {
   return assigned;
 }
 
-// ── Chat types ────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface ChatMsg {
   role: "user" | "assistant";
   content: string;
+}
+
+interface SelectedTask {
+  task: CalendarTask;
+  rect: DOMRect;
+  conflict: Conflict | null;
+  conflictPartner: CalendarTask | null;
 }
 
 // ── TaskBlock ─────────────────────────────────────────────────────────────────
 function TaskBlock({
   laid,
   isConflict,
-  onConfirm,
+  onClick,
 }: {
   laid: LaidTask;
   isConflict: boolean;
-  onConfirm: () => void;
+  onClick: (rect: DOMRect) => void;
 }) {
   const { task, lane, laneCount } = laid;
   const top = topPx(task.startTime);
@@ -119,13 +125,16 @@ function TaskBlock({
   const leftPct = (lane / laneCount) * 100;
   const confirmed = task.confirmed !== false;
   const isTall = height >= 48;
-  const isVeryTall = height >= 72;
 
   const borderColor = isConflict ? "#ef4444" : task.color;
   const bg = `${task.color}${confirmed ? "20" : "12"}`;
 
   return (
     <div
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick((e.currentTarget as HTMLDivElement).getBoundingClientRect());
+      }}
       style={{
         position: "absolute",
         top,
@@ -133,21 +142,19 @@ function TaskBlock({
         left: `calc(${leftPct}% + 2px)`,
         width: `calc(${widthPct}% - 4px)`,
         backgroundColor: bg,
-        borderLeft: `3px solid ${borderColor}`,
         border: confirmed
-          ? `1px solid ${borderColor}40`
+          ? `1px solid ${borderColor}50`
           : `1.5px dashed ${borderColor}90`,
         borderLeft: `3px solid ${borderColor}`,
         borderRadius: 6,
         overflow: "hidden",
         zIndex: isConflict ? 2 : 1,
-        cursor: "default",
-        transition: "box-shadow 0.15s",
+        cursor: "pointer",
+        transition: "filter 0.12s, box-shadow 0.12s",
       }}
-      className="group hover:brightness-110"
+      className="hover:brightness-125 hover:shadow-lg"
     >
       <div className="px-1.5 py-1 h-full flex flex-col gap-0.5 overflow-hidden">
-        {/* Header row */}
         <div className="flex items-center gap-1 min-w-0">
           {isConflict && (
             <span className="text-red-400 text-[10px] shrink-0">⚠</span>
@@ -155,7 +162,7 @@ function TaskBlock({
           {!confirmed && (
             <span
               className="text-yellow-400 text-[10px] shrink-0"
-              title="Unconfirmed — click Confirm to lock in"
+              title="Unconfirmed"
             >
               ◌
             </span>
@@ -169,8 +176,6 @@ function TaskBlock({
             </span>
           )}
         </div>
-
-        {/* Title */}
         <p
           className="text-[11px] font-semibold text-white leading-tight"
           style={{
@@ -182,21 +187,211 @@ function TaskBlock({
         >
           {task.title}
         </p>
-
-        {/* Confirm button for unconfirmed tasks */}
-        {!confirmed && isVeryTall && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onConfirm();
-            }}
-            className="mt-auto text-[10px] border border-yellow-500/50 text-yellow-300 hover:bg-yellow-500/20 rounded px-1.5 py-0.5 w-fit transition-colors"
-          >
-            Confirm ✓
-          </button>
-        )}
       </div>
     </div>
+  );
+}
+
+// ── TaskPopover ───────────────────────────────────────────────────────────────
+const POPOVER_W = 292;
+
+function TaskPopover({
+  selected,
+  onClose,
+  onConfirm,
+  onResolve,
+  onAskAI,
+}: {
+  selected: SelectedTask;
+  onClose: () => void;
+  onConfirm: () => void;
+  onResolve: (keepId: string) => void;
+  onAskAI: () => void;
+}) {
+  const { task, rect, conflict, conflictPartner } = selected;
+  const confirmed = task.confirmed !== false;
+
+  // ── Smart positioning ─────────────────────────────────────────────────────
+  const GAP = 10;
+  const POPOVER_MAX_H = 480;
+
+  const rightSpace = window.innerWidth - rect.right;
+  const leftSpace = rect.left;
+
+  let left: number;
+  if (rightSpace >= POPOVER_W + GAP) {
+    left = rect.right + GAP;
+  } else if (leftSpace >= POPOVER_W + GAP) {
+    left = rect.left - POPOVER_W - GAP;
+  } else {
+    left = Math.max(
+      GAP,
+      Math.min(window.innerWidth - POPOVER_W - GAP, rect.left),
+    );
+  }
+
+  const rawTop = rect.top;
+  const top = Math.max(
+    GAP,
+    Math.min(rawTop, window.innerHeight - POPOVER_MAX_H - GAP),
+  );
+
+  // ── Close on Escape ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const typeLabel = task.type.replace(/_/g, " ");
+
+  return (
+    <>
+      {/* Invisible backdrop to catch outside clicks */}
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+
+      {/* Popover card */}
+      <div
+        style={{ position: "fixed", left, top, width: POPOVER_W, zIndex: 50 }}
+        className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Coloured top bar */}
+        <div className="h-1 w-full" style={{ backgroundColor: task.color }} />
+
+        <div className="p-4">
+          {/* Header */}
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 mb-1">
+                <div
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: task.color }}
+                />
+                <span className="text-[10px] text-gray-500 uppercase tracking-wider truncate">
+                  {typeLabel}
+                </span>
+                {!confirmed && (
+                  <span className="text-[10px] text-yellow-400 border border-yellow-600/40 rounded px-1 leading-tight">
+                    unconfirmed
+                  </span>
+                )}
+              </div>
+              <h3 className="text-sm font-semibold text-white leading-snug">
+                {task.title}
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {task.date} &nbsp;·&nbsp; {task.startTime}–{task.endTime}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors text-sm"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* ── Unconfirmed notice ─────────────────────────────────────────── */}
+          {!confirmed && (
+            <div className="mb-3 rounded-xl bg-yellow-500/10 border border-yellow-600/30 p-3">
+              <p className="text-xs text-yellow-300 mb-2 leading-relaxed">
+                This event hasn&apos;t been confirmed yet. Lock it in to include
+                it in your plan.
+              </p>
+              <button
+                onClick={() => {
+                  onConfirm();
+                  onClose();
+                }}
+                className="w-full text-xs bg-yellow-500/20 hover:bg-yellow-500/35 text-yellow-200 border border-yellow-500/40 rounded-lg px-3 py-2 transition-colors font-medium"
+              >
+                Confirm Attendance ✓
+              </button>
+            </div>
+          )}
+
+          {/* ── Conflict section ───────────────────────────────────────────── */}
+          {conflict && conflictPartner ? (
+            <div className="rounded-xl bg-red-950/40 border border-red-800/40 p-3 space-y-3">
+              {/* Conflict header */}
+              <div className="flex items-start gap-2">
+                <span className="text-red-400 text-sm shrink-0 mt-0.5">⚠</span>
+                <div>
+                  <p className="text-xs text-red-300 font-semibold leading-tight">
+                    Scheduling conflict
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
+                    Overlaps with{" "}
+                    <span className="text-white font-medium">
+                      "{conflictPartner.title}"
+                    </span>{" "}
+                    ({conflictPartner.startTime}–{conflictPartner.endTime}).
+                    Only one can be attended.
+                  </p>
+                </div>
+              </div>
+
+              {/* Resolution buttons */}
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => {
+                    onResolve(task.id);
+                    onClose();
+                  }}
+                  className="w-full text-left text-xs bg-indigo-600/25 hover:bg-indigo-600/45 text-indigo-200 border border-indigo-600/40 rounded-lg px-3 py-2 transition-colors leading-snug"
+                >
+                  <span className="font-semibold">Keep this</span>
+                  <span className="text-indigo-400">
+                    {" "}
+                    · remove "{conflictPartner.title}"
+                  </span>
+                </button>
+                <button
+                  onClick={() => {
+                    onResolve(conflictPartner.id);
+                    onClose();
+                  }}
+                  className="w-full text-left text-xs bg-gray-700/50 hover:bg-gray-700 text-gray-300 border border-gray-600/40 rounded-lg px-3 py-2 transition-colors leading-snug"
+                >
+                  <span className="font-semibold">
+                    Keep "{conflictPartner.title}"
+                  </span>
+                  <span className="text-gray-500"> · remove this</span>
+                </button>
+
+                {/* Divider */}
+                <div className="flex items-center gap-2 py-0.5">
+                  <div className="flex-1 h-px bg-gray-700/60" />
+                  <span className="text-[10px] text-gray-600">or</span>
+                  <div className="flex-1 h-px bg-gray-700/60" />
+                </div>
+
+                <button
+                  onClick={() => {
+                    onClose();
+                    onAskAI();
+                  }}
+                  className="w-full text-xs bg-indigo-600/15 hover:bg-indigo-600/35 text-indigo-300 border border-indigo-500/30 rounded-lg px-3 py-2.5 transition-colors font-semibold flex items-center justify-center gap-1.5"
+                >
+                  <span>✦</span> Ask AI for a recommendation
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* No conflict — subtle footer */
+            <div className="flex items-center gap-1.5 pt-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500/70" />
+              <span className="text-[10px] text-gray-500">
+                No conflicts with other events
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -269,7 +464,7 @@ function AiChatPanel({
               { role: "assistant", content: full },
             ]);
           } catch {
-            /* skip malformed SSE chunk */
+            /* skip */
           }
         }
       }
@@ -283,7 +478,6 @@ function AiChatPanel({
     }
   }
 
-  // Auto-send the initial context prompt once on mount
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
@@ -291,18 +485,15 @@ function AiChatPanel({
       `I have a scheduling conflict on ${conflict.date}:\n` +
       `• "${conflict.taskATitle}" (${taskA?.startTime ?? "?"}–${taskA?.endTime ?? "?"})\n` +
       `• "${conflict.taskBTitle}" (${taskB?.startTime ?? "?"}–${taskB?.endTime ?? "?"})\n\n` +
-      `These events overlap — I can only attend one. Which should I prioritize? ` +
-      `Please give a brief, direct recommendation considering career impact and urgency.`;
+      `These overlap and I can only attend one. Which should I prioritize? Give a brief, direct recommendation.`;
     sendWithHistory(prompt, []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Scroll to bottom whenever messages update
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
-  // Close on Escape key
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -326,14 +517,14 @@ function AiChatPanel({
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700 shrink-0">
           <div>
             <p className="text-sm font-semibold text-white flex items-center gap-2">
-              <span className="text-red-400">⚠️</span>
-              Conflict · AI Recommendation
+              <span className="text-red-400">⚠️</span> Conflict · AI
+              Recommendation
             </p>
             <p className="text-xs text-gray-400 mt-0.5">{conflict.date}</p>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white text-xl leading-none transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-700"
+            className="text-gray-400 hover:text-white text-xl leading-none w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-700 transition-colors"
           >
             ✕
           </button>
@@ -378,8 +569,7 @@ function AiChatPanel({
         <div className="px-5 pb-2 shrink-0">
           <div className="border-t border-gray-700/60" />
           <p className="text-[11px] text-gray-500 mt-2">
-            Only one of these events can be attended — the AI will help you
-            decide which to keep.
+            Only one of these events can be attended. Ask the AI which to keep.
           </p>
         </div>
 
@@ -454,11 +644,12 @@ function AiChatPanel({
   );
 }
 
-// ── CalendarView (main export) ────────────────────────────────────────────────
+// ── CalendarView ──────────────────────────────────────────────────────────────
 export default function CalendarView() {
   const { calendarTasks, conflicts, resolveConflict, confirmCalendarTask } =
     useAppStore();
   const [weekOffset, setWeekOffset] = useState(0);
+  const [selectedTask, setSelectedTask] = useState<SelectedTask | null>(null);
   const [chatConflict, setChatConflict] = useState<Conflict | null>(null);
 
   const weekDates = getWeekDates(weekOffset);
@@ -472,6 +663,26 @@ export default function CalendarView() {
   const unconfirmedCount = weekTasks.filter(
     (t) => t.confirmed === false,
   ).length;
+
+  function handleTaskClick(task: CalendarTask, rect: DOMRect) {
+    const conflict =
+      conflicts.find((c) => c.taskAId === task.id || c.taskBId === task.id) ??
+      null;
+    const partnerId = conflict
+      ? conflict.taskAId === task.id
+        ? conflict.taskBId
+        : conflict.taskAId
+      : null;
+    const conflictPartner = partnerId
+      ? (calendarTasks.find((t) => t.id === partnerId) ?? null)
+      : null;
+    setSelectedTask({ task, rect, conflict, conflictPartner });
+  }
+
+  // Close popover when week changes
+  useEffect(() => {
+    setSelectedTask(null);
+  }, [weekOffset]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 flex flex-col gap-4">
@@ -488,9 +699,12 @@ export default function CalendarView() {
           {/* Status badges */}
           <div className="flex items-center gap-2">
             {weekConflicts.length > 0 && (
-              <span className="text-xs bg-red-500/15 text-red-400 px-2.5 py-1 rounded-full border border-red-800/40">
+              <span
+                className="text-xs bg-red-500/15 text-red-400 px-2.5 py-1 rounded-full border border-red-800/40 cursor-default"
+                title="Click any ⚠ event on the calendar to resolve"
+              >
                 ⚠ {weekConflicts.length} conflict
-                {weekConflicts.length !== 1 ? "s" : ""}
+                {weekConflicts.length !== 1 ? "s" : ""} · click to resolve
               </span>
             )}
             {unconfirmedCount > 0 && (
@@ -529,45 +743,11 @@ export default function CalendarView() {
         </div>
       </div>
 
-      {/* ── Conflict alerts ─────────────────────────────────────────────────── */}
-      {weekConflicts.length > 0 && (
-        <div className="space-y-2">
-          {weekConflicts.map((c) => (
-            <div
-              key={c.id}
-              className="flex items-center justify-between bg-red-950/30 border border-red-800/40 rounded-xl px-4 py-3 gap-4"
-            >
-              <div className="flex items-start gap-3 min-w-0">
-                <span className="text-red-400 text-base shrink-0 mt-0.5">
-                  ⚠️
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm text-red-300 font-medium truncate">
-                    <span className="text-white">{c.taskATitle}</span>
-                    <span className="text-red-500 mx-1.5">overlaps</span>
-                    <span className="text-white">{c.taskBTitle}</span>
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {c.date} · Only one can be attended — resolve now or get an
-                    AI recommendation
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => setChatConflict(c)}
-                  className="text-xs bg-indigo-600/25 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-600/40 rounded-lg px-3 py-1.5 transition-colors font-medium"
-                >
-                  Ask AI ✦
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* ── Calendar grid ───────────────────────────────────────────────────── */}
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl overflow-hidden">
+      <div
+        className="bg-gray-900 border border-gray-700 rounded-2xl overflow-hidden"
+        onClick={() => setSelectedTask(null)}
+      >
         {/* Day header row */}
         <div
           className="flex border-b border-gray-700 bg-gray-800/60"
@@ -595,7 +775,7 @@ export default function CalendarView() {
                   <p
                     className={`text-sm font-bold ${
                       isToday
-                        ? "bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs mx-auto"
+                        ? "bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs"
                         : hasConflict
                           ? "text-red-400"
                           : hasTasks
@@ -657,7 +837,6 @@ export default function CalendarView() {
             {weekDates.map((date) => {
               const dayTasks = weekTasks.filter((t) => t.date === date);
               const laid = assignLanes(dayTasks);
-
               return (
                 <div
                   key={date}
@@ -700,7 +879,7 @@ export default function CalendarView() {
                       key={l.task.id}
                       laid={l}
                       isConflict={conflictTaskIds.has(l.task.id)}
-                      onConfirm={() => confirmCalendarTask(l.task.id)}
+                      onClick={(rect) => handleTaskClick(l.task, rect)}
                     />
                   ))}
                 </div>
@@ -722,7 +901,9 @@ export default function CalendarView() {
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-red-400 text-xs">⚠</span>
-          <span className="text-xs text-gray-400">Conflict</span>
+          <span className="text-xs text-gray-400">
+            Conflict — click event to resolve
+          </span>
         </div>
         {[
           { label: "Internship", color: "#10b981" },
@@ -742,6 +923,27 @@ export default function CalendarView() {
           </div>
         ))}
       </div>
+
+      {/* ── Task Popover ─────────────────────────────────────────────────────── */}
+      {selectedTask && (
+        <TaskPopover
+          selected={selectedTask}
+          onClose={() => setSelectedTask(null)}
+          onConfirm={() => confirmCalendarTask(selectedTask.task.id)}
+          onResolve={(keepId) => {
+            if (selectedTask.conflict) {
+              resolveConflict(selectedTask.conflict.id, keepId);
+            }
+            setSelectedTask(null);
+          }}
+          onAskAI={() => {
+            if (selectedTask.conflict) {
+              setChatConflict(selectedTask.conflict);
+            }
+            setSelectedTask(null);
+          }}
+        />
+      )}
 
       {/* ── AI Chat Panel ────────────────────────────────────────────────────── */}
       {chatConflict && (
