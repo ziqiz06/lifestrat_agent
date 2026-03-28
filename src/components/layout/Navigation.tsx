@@ -8,7 +8,12 @@ const TABS = [
   { id: 'preferences', label: 'Preferences', icon: '⚙️' },
 ] as const;
 
-export default function Navigation() {
+interface NavProps {
+  userEmail?: string | null;
+  onSignOut?: () => void;
+}
+
+export default function Navigation({ userEmail, onSignOut }: NavProps) {
   const { activeTab, setActiveTab, conflicts, opportunities } = useAppStore();
   const unresolvedConflicts = conflicts.length;
   const undecidedOpps = opportunities.filter((o) => o.interested === null && o.category !== 'ignore').length;
@@ -18,7 +23,7 @@ export default function Navigation() {
       <div className="max-w-5xl mx-auto px-4">
         <div className="flex items-center justify-between h-14">
           <span className="text-white font-bold text-sm">🧭 LifeStrat</span>
-          <div className="flex">
+          <div className="flex items-center">
             {TABS.map((tab) => {
               const badge =
                 tab.id === 'dashboard' && unresolvedConflicts > 0
@@ -47,6 +52,17 @@ export default function Navigation() {
                 </button>
               );
             })}
+            {userEmail && (
+              <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-700">
+                <span className="text-xs text-gray-500 hidden md:inline">{userEmail}</span>
+                <button
+                  onClick={onSignOut}
+                  className="text-xs text-gray-500 hover:text-red-400 transition-colors px-2 py-1 rounded"
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

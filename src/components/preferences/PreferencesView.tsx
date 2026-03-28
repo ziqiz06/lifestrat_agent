@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useAppStore } from "@/store/appStore";
 import { UserProfile } from "@/types";
+import { saveProfile } from "@/lib/supabaseSync";
 
 const DAYS = [
   "Monday",
@@ -13,7 +14,11 @@ const DAYS = [
   "Sunday",
 ];
 
-export default function PreferencesView() {
+interface PreferencesProps {
+  userId?: string | null;
+}
+
+export default function PreferencesView({ userId }: PreferencesProps) {
   const { profile, updateProfile } = useAppStore();
   const [form, setForm] = useState<UserProfile>({ ...profile });
   const [saved, setSaved] = useState(false);
@@ -33,6 +38,9 @@ export default function PreferencesView() {
 
   const handleSave = () => {
     updateProfile(form);
+    if (userId) {
+      saveProfile(userId, form);
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
