@@ -7,6 +7,7 @@ import { mockCalendarTasks } from "@/data/mockCalendar";
 import { rankOpportunities } from "@/lib/opportunityRanking";
 import { detectConflicts } from "@/lib/conflictDetection";
 import { deriveOpportunitiesFromEmails } from "@/lib/emailParser";
+import { generateDailyStrategy } from "@/lib/strategyEngine";
 
 const DEFAULT_PROFILE: UserProfile = {
   careerGoals: "",
@@ -69,6 +70,7 @@ interface AppStore extends AppState {
   confirmGoal: (goalId: string, confirmed: boolean) => void;
   generateAIInsights: (profile: UserProfile) => Promise<void>;
   setGoals: (goals: Goal[]) => void;
+  computeStrategy: () => void;
 }
 
 export const useAppStore = create<AppStore>()(
@@ -87,17 +89,26 @@ export const useAppStore = create<AppStore>()(
       onboardingComplete: false,
       aiInsight: "",
       aiInsightLoading: false,
+      dailyStrategy: null,
 
       setActiveTab: (tab) => set({ activeTab: tab }),
+
+      computeStrategy: () => {
+        const { opportunities, profile } = get();
+        const strategy = generateDailyStrategy(opportunities, profile);
+        set({ dailyStrategy: strategy });
+      },
 
       completeOnboarding: (profile) => {
         const rankedOpps = rankOpportunities(get().opportunities, profile);
         const conflicts = detectConflicts(get().calendarTasks);
+        const strategy = generateDailyStrategy(rankedOpps, profile);
         set({
           profile,
           opportunities: rankedOpps,
           conflicts,
           onboardingComplete: true,
+          dailyStrategy: strategy,
         });
       },
 
@@ -208,7 +219,8 @@ Format your response as:
       updateProfile: (partial) => {
         const profile = { ...get().profile, ...partial };
         const rankedOpps = rankOpportunities(get().opportunities, profile);
-        set({ profile, opportunities: rankedOpps });
+        const strategy = generateDailyStrategy(rankedOpps, profile);
+        set({ profile, opportunities: rankedOpps, dailyStrategy: strategy });
       },
 
       setOpportunityInterest: (id, interested) => {
@@ -305,12 +317,14 @@ Format your response as:
           opportunities,
           aiInsight,
           aiInsightLoading,
+          dailyStrategy,
           ...persisted
         } = state;
         void emails;
         void opportunities;
         void aiInsight;
         void aiInsightLoading;
+        void dailyStrategy;
         return persisted;
       },
     },

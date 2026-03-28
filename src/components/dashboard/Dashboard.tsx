@@ -1,5 +1,7 @@
 'use client';
 import { useAppStore } from '@/store/appStore';
+import { Plan } from '@/types';
+import { generatePlans } from '@/lib/strategyEngine';
 
 function AIInsightPanel() {
   const { aiInsight, aiInsightLoading, profile, generateAIInsights } = useAppStore();
@@ -56,6 +58,142 @@ function AIInsightPanel() {
   );
 }
 
+function PlansPanel({ plans }: { plans: Plan[] }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+      {plans.map((plan) => (
+        <div key={plan.name} className="bg-gray-800/60 rounded-xl p-4 border border-gray-700">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-bold text-indigo-400 bg-indigo-900/40 px-2 py-0.5 rounded-full">
+              {plan.name}
+            </span>
+            <span className="text-xs text-gray-400">{plan.focus}</span>
+          </div>
+          <p className="text-xs text-gray-500 mb-3 italic">{plan.explanation}</p>
+          <ol className="space-y-2">
+            {plan.items.map((item, idx) => (
+              <li key={item.opportunityId} className="flex items-start gap-2">
+                <span className="text-xs text-indigo-400 shrink-0 font-mono mt-0.5">{idx + 1}.</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-white font-medium truncate">{item.action}</p>
+                  {item.reason && (
+                    <p className="text-xs text-gray-500 truncate">{item.reason}</p>
+                  )}
+                </div>
+                <span className="text-xs text-gray-600 shrink-0">{item.estimatedHours}h</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TodaysStrategyPanel() {
+  const { dailyStrategy, computeStrategy, conflicts, opportunities, profile } = useAppStore();
+
+  if (!dailyStrategy) {
+    return (
+      <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-white">Today&apos;s Strategy</p>
+          <p className="text-xs text-gray-500 mt-0.5">Get a prioritized action plan for your day</p>
+        </div>
+        <button
+          onClick={computeStrategy}
+          className="py-2 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors"
+        >
+          Compute Strategy →
+        </button>
+      </div>
+    );
+  }
+
+  const showPlans = conflicts.length >= 2;
+  const plans = showPlans ? generatePlans(opportunities, profile) : [];
+
+  return (
+    <div className="bg-gray-800 rounded-2xl p-5 border border-indigo-700/30">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="font-semibold text-white flex items-center gap-2">
+            <span>📋</span> Today&apos;s Strategy
+          </h2>
+          <p className="text-xs text-gray-500 mt-0.5">{dailyStrategy.date}</p>
+        </div>
+        <button
+          onClick={computeStrategy}
+          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+        >
+          Refresh ↻
+        </button>
+      </div>
+
+      {/* Top actions */}
+      {dailyStrategy.topActions.length === 0 ? (
+        <p className="text-sm text-gray-500">No high-priority actions for today.</p>
+      ) : (
+        <ol className="space-y-3 mb-4">
+          {dailyStrategy.topActions.map((item, idx) => (
+            <li key={item.opportunityId} className="flex items-start gap-3">
+              <span className="text-sm font-bold text-indigo-400 shrink-0 w-5 text-right">{idx + 1}.</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white font-medium">{item.action}</p>
+                {item.reason && (
+                  <p className="text-xs text-gray-500 mt-0.5">{item.reason}</p>
+                )}
+              </div>
+              <span className="text-xs text-gray-600 shrink-0 mt-0.5">{item.estimatedHours}h</span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {/* Deferred items */}
+      {dailyStrategy.deferredItems.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-gray-700">
+          <p className="text-xs font-semibold text-gray-400 mb-2">Defer to tomorrow:</p>
+          <ul className="space-y-1.5">
+            {dailyStrategy.deferredItems.map((item) => (
+              <li key={item.opportunityId} className="flex items-start gap-2">
+                <span className="text-gray-600 text-xs mt-0.5">–</span>
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs text-gray-400">{item.action}</span>
+                  {item.reason && (
+                    <span className="text-xs text-gray-600"> — {item.reason}</span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Overload warning */}
+      {dailyStrategy.overloaded && (
+        <div className="mt-3 pt-3 border-t border-yellow-700/40 flex items-start gap-2">
+          <span className="text-yellow-400 text-sm">⚠️</span>
+          <p className="text-xs text-yellow-400">
+            This day is overloaded ({dailyStrategy.totalScheduledHours}h planned / {dailyStrategy.availableHours}h available).
+            Consider dropping lower-priority items.
+          </p>
+        </div>
+      )}
+
+      {/* Plans A/B when conflicts exist */}
+      {showPlans && plans.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-gray-700">
+          <p className="text-xs font-semibold text-gray-400 mb-1">
+            You have {conflicts.length} schedule conflicts — choose a plan:
+          </p>
+          <PlansPanel plans={plans} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { profile, opportunities, conflicts, calendarTasks, goals, setActiveTab, confirmGoal, resolveConflict } = useAppStore();
 
@@ -68,6 +206,9 @@ export default function Dashboard() {
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
       {/* AI Insights */}
       <AIInsightPanel />
+
+      {/* Today's Strategy */}
+      <TodaysStrategyPanel />
 
       {/* Welcome */}
       <div className="bg-linear-to-r from-indigo-900/50 to-purple-900/50 rounded-2xl p-5 border border-indigo-800/50">

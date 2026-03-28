@@ -108,4 +108,29 @@ export interface AppState {
   // AI-generated content
   aiInsight: string;
   aiInsightLoading: boolean;
+  dailyStrategy: DailyStrategy | null;
+}
+
+export interface StrategyAction {
+  opportunityId: string;
+  title: string;
+  action: string;       // e.g. "Submit: Amazon SDE application"
+  reason: string;       // e.g. "Deadline in 2 days — high career impact"
+  estimatedHours: number;
+}
+
+export interface DailyStrategy {
+  date: string;
+  topActions: StrategyAction[];
+  deferredItems: StrategyAction[];
+  overloaded: boolean;
+  totalScheduledHours: number;
+  availableHours: number;
+}
+
+export interface Plan {
+  name: string;        // "Plan A" or "Plan B"
+  focus: string;       // "Career-Focused"
+  items: StrategyAction[];
+  explanation: string;
 }
