@@ -67,6 +67,8 @@ interface AppStore extends AppState {
   setOpportunityInterest: (id: string, interested: boolean | null) => void;
   addOpportunityToCalendar: (opportunityId: string) => void;
   confirmCalendarTask: (taskId: string) => void;
+  deleteCalendarTask: (taskId: string) => void;
+  addCustomCalendarTask: (task: Omit<CalendarTask, "id">) => void;
   resolveConflict: (conflictId: string, keepTaskId: string) => void;
   confirmGoal: (goalId: string, confirmed: boolean) => void;
   generateAIInsights: (profile: UserProfile) => Promise<void>;
@@ -286,6 +288,37 @@ Format your response as:
             t.id === taskId ? { ...t, confirmed: true } : t,
           ),
         }));
+      },
+
+      deleteCalendarTask: (taskId) => {
+        const removed = get().calendarTasks.find((t) => t.id === taskId);
+        const newTasks = get().calendarTasks.filter((t) => t.id !== taskId);
+        const newConflicts = detectConflicts(newTasks);
+        set((state) => ({
+          calendarTasks: newTasks,
+          conflicts: newConflicts,
+          // If the task was linked to an opportunity, un-mark it as added
+          opportunities: removed?.opportunityId
+            ? state.opportunities.map((o) =>
+                o.id === removed.opportunityId
+                  ? { ...o, addedToCalendar: false }
+                  : o,
+              )
+            : state.opportunities,
+        }));
+      },
+
+      addCustomCalendarTask: (taskData) => {
+        const newTask: CalendarTask = {
+          ...taskData,
+          id: `custom-${Date.now()}`,
+          confirmed: true,
+        };
+        const newTasks = [...get().calendarTasks, newTask];
+        set({
+          calendarTasks: newTasks,
+          conflicts: detectConflicts(newTasks),
+        });
       },
 
       resolveConflict: (conflictId, keepTaskId) => {
