@@ -1,0 +1,222 @@
+'use client';
+import { useAppStore } from '@/store/appStore';
+
+function AIInsightPanel() {
+  const { aiInsight, aiInsightLoading, profile, generateAIInsights } = useAppStore();
+
+  if (!aiInsight && !aiInsightLoading) {
+    return (
+      <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-white">AI Strategy Insights</p>
+          <p className="text-xs text-gray-500 mt-0.5">Generate a personalized plan from K2 Think</p>
+        </div>
+        <button
+          onClick={() => generateAIInsights(profile)}
+          className="py-2 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors"
+        >
+          Generate →
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-linear-to-br from-indigo-950/60 to-purple-950/60 rounded-2xl p-5 border border-indigo-700/40">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-semibold text-white flex items-center gap-2">
+          <span>🤖</span> AI Strategy (K2 Think)
+        </h2>
+        {aiInsightLoading && (
+          <span className="text-xs text-indigo-400 animate-pulse">Thinking...</span>
+        )}
+        {!aiInsightLoading && (
+          <button
+            onClick={() => generateAIInsights(profile)}
+            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+          >
+            Refresh ↻
+          </button>
+        )}
+      </div>
+      {/* Render markdown-like bold headings */}
+      <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
+        {aiInsight.split(/(\*\*[^*]+\*\*)/).map((part, i) =>
+          part.startsWith('**') && part.endsWith('**') ? (
+            <span key={i} className="font-semibold text-white">
+              {part.slice(2, -2)}
+            </span>
+          ) : (
+            <span key={i}>{part}</span>
+          )
+        )}
+        {aiInsightLoading && <span className="animate-pulse">▌</span>}
+      </div>
+    </div>
+  );
+}
+
+export default function Dashboard() {
+  const { profile, opportunities, conflicts, calendarTasks, goals, setActiveTab, confirmGoal, resolveConflict } = useAppStore();
+
+  const today = '2026-03-28';
+  const todayTasks = calendarTasks.filter((t) => t.date === today || t.date === '2026-03-29');
+  const topOpps = opportunities.filter((o) => o.interested === null && o.category !== 'ignore').slice(0, 3);
+  const pendingGoals = goals.filter((g) => g.confirmed === null);
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+      {/* AI Insights */}
+      <AIInsightPanel />
+
+      {/* Welcome */}
+      <div className="bg-linear-to-r from-indigo-900/50 to-purple-900/50 rounded-2xl p-5 border border-indigo-800/50">
+        <h1 className="text-xl font-bold text-white mb-1">Good morning! 👋</h1>
+        <p className="text-gray-300 text-sm">
+          {profile.scheduleIntensity === 'intense' ? '🔥 Intense mode — let\'s crush it today.' :
+           profile.scheduleIntensity === 'light' ? '🌱 Light mode — steady and sustainable.' :
+           '⚡ Moderate mode — balanced and productive.'}
+        </p>
+      </div>
+
+      {/* Grid: conflicts + top priorities */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Conflicts */}
+        {conflicts.length > 0 && (
+          <div className="bg-gray-800 rounded-2xl p-5 border border-red-800/50">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-white flex items-center gap-2">
+                <span className="text-red-400">⚠️</span> Schedule Conflicts
+              </h2>
+              <span className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full">{conflicts.length}</span>
+            </div>
+            {conflicts.slice(0, 2).map((c) => (
+              <div key={c.id} className="mb-3 last:mb-0">
+                <p className="text-sm text-gray-300 mb-1">{c.reason}</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => resolveConflict(c.id, c.taskAId)}
+                    className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded px-2 py-1 transition-colors"
+                  >
+                    Keep &quot;{c.taskATitle.slice(0, 20)}...&quot;
+                  </button>
+                  <button
+                    onClick={() => resolveConflict(c.id, c.taskBId)}
+                    className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded px-2 py-1 transition-colors"
+                  >
+                    Keep &quot;{c.taskBTitle.slice(0, 20)}...&quot;
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Goals */}
+        {pendingGoals.length > 0 && (
+          <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700">
+            <h2 className="font-semibold text-white mb-3 flex items-center gap-2">
+              <span>🎯</span> Your Weekly Goals
+            </h2>
+            <div className="space-y-3">
+              {pendingGoals.slice(0, 3).map((g) => (
+                <div key={g.id} className="flex items-start gap-3">
+                  <p className="text-sm text-gray-300 flex-1">{g.text}</p>
+                  <div className="flex gap-1 shrink-0">
+                    <button
+                      onClick={() => confirmGoal(g.id, true)}
+                      className="text-xs bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-600/50 rounded px-2 py-0.5 transition-colors"
+                    >
+                      Add to plan
+                    </button>
+                    <button
+                      onClick={() => confirmGoal(g.id, false)}
+                      className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-400 rounded px-2 py-0.5 transition-colors"
+                    >
+                      Skip
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Today's schedule */}
+      <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-white flex items-center gap-2"><span>📅</span> Upcoming Schedule</h2>
+          <button
+            onClick={() => setActiveTab('calendar')}
+            className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            View all →
+          </button>
+        </div>
+        {todayTasks.length === 0 ? (
+          <p className="text-gray-500 text-sm">No tasks scheduled. Add some from Opportunities!</p>
+        ) : (
+          <div className="space-y-2">
+            {todayTasks.slice(0, 5).map((task) => (
+              <div key={task.id} className="flex items-center gap-3 py-2 border-b border-gray-700 last:border-0">
+                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: task.color }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-white truncate">{task.title}</p>
+                  <p className="text-xs text-gray-500">{task.date} • {task.startTime}–{task.endTime}</p>
+                </div>
+                {task.conflict && <span className="text-xs text-red-400">⚠️ Conflict</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Top opportunities */}
+      <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-white flex items-center gap-2"><span>🚀</span> Top Opportunities</h2>
+          <button
+            onClick={() => setActiveTab('opportunities')}
+            className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            See all →
+          </button>
+        </div>
+        <div className="space-y-3">
+          {topOpps.map((opp) => (
+            <div key={opp.id} className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-indigo-900/50 flex items-center justify-center text-sm shrink-0">
+                {opp.priority >= 9 ? '🔴' : opp.priority >= 7 ? '🟡' : '🟢'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white truncate">{opp.title}</p>
+                <p className="text-xs text-gray-500 truncate">{opp.priorityReason}</p>
+              </div>
+              <span className="text-xs text-indigo-400 shrink-0">P{opp.priority}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Quick actions */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: 'Review Opportunities', tab: 'opportunities' as const, icon: '🎯' },
+          { label: 'View Calendar', tab: 'calendar' as const, icon: '📅' },
+          { label: 'Edit Preferences', tab: 'preferences' as const, icon: '⚙️' },
+          { label: 'Check Conflicts', tab: 'dashboard' as const, icon: '⚠️' },
+        ].map((action) => (
+          <button
+            key={action.label}
+            onClick={() => setActiveTab(action.tab)}
+            className="bg-gray-800 border border-gray-700 rounded-xl p-4 text-center transition-colors hover:border-indigo-600/50"
+          >
+            <div className="text-2xl mb-1">{action.icon}</div>
+            <p className="text-xs text-gray-300 font-medium">{action.label}</p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
