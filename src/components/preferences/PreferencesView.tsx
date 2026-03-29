@@ -4,6 +4,9 @@ import { useAppStore } from "@/store/appStore";
 import { UserProfile, ScheduleBlock, ScheduleBlockRecurrence } from "@/types";
 import { saveProfile, clearCalendarAndDecisions } from "@/lib/supabaseSync";
 
+const DOT  = { fontFamily: "var(--font-dot)"  } as const;
+const MONO = { fontFamily: "var(--font-mono)" } as const;
+
 const RECURRENCE_LABELS: Record<ScheduleBlockRecurrence, string> = {
   none: "One-time",
   daily: "Daily",
@@ -89,31 +92,33 @@ const handleSave = () => {
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">Preferences</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
+          <h1 className="text-5xl font-bold text-white" style={DOT}>Preferences</h1>
+          <p className="text-base text-gray-400 mt-0.5" style={MONO}>
             Edit your planning constraints
           </p>
         </div>
         <button
           onClick={handleSave}
-          className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
+          className={`px-5 py-2 text-base font-medium transition-colors ${
             saved
               ? "bg-green-600 text-white"
               : "bg-indigo-600 hover:bg-indigo-500 text-white"
           }`}
+          style={MONO}
         >
           {saved ? "✓ Saved!" : "Save Changes"}
         </button>
       </div>
 
       {/* Profile */}
-      <section className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-4">
-        <h2 className="font-semibold text-white">Profile</h2>
+      <section className="bg-gray-800 p-5 border border-gray-700 space-y-4">
+        <h2 className="text-lg font-bold text-white uppercase tracking-wider" style={MONO}>Profile</h2>
         <div>
-          <label className="block text-sm text-gray-400 mb-1.5">Your name</label>
+          <label className="block text-base text-gray-400 mb-1.5" style={MONO}>Your name</label>
           <input
             type="text"
-            className="w-full bg-gray-700 text-white rounded-lg p-3 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
+            className="w-full bg-gray-700 text-white p-3 border border-gray-600 focus:border-indigo-500 focus:outline-none text-base"
+            style={MONO}
             placeholder="e.g. Alex"
             value={form.name ?? ''}
             onChange={(e) => update('name', e.target.value)}
@@ -122,43 +127,46 @@ const handleSave = () => {
       </section>
 
       {/* Career */}
-      <section className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-4">
-        <h2 className="font-semibold text-white">Career &amp; Interests</h2>
+      <section className="bg-gray-800 p-5 border border-gray-700 space-y-4">
+        <h2 className="text-lg font-bold text-white uppercase tracking-wider" style={MONO}>Career &amp; Interests</h2>
         <div>
-          <label className="block text-sm text-gray-400 mb-1.5">
+          <label className="block text-base text-gray-400 mb-1.5" style={MONO}>
             Career goals
           </label>
           <textarea
-            className="w-full bg-gray-700 text-white rounded-lg p-3 border border-gray-600 focus:border-indigo-500 focus:outline-none resize-none text-sm"
+            className="w-full bg-gray-700 text-white p-3 border border-gray-600 focus:border-indigo-500 focus:outline-none resize-none text-base"
+            style={MONO}
             rows={2}
             value={form.careerGoals}
             onChange={(e) => update("careerGoals", e.target.value)}
           />
         </div>
         <div>
-          <label className="block text-sm text-gray-400 mb-1.5">
+          <label className="block text-base text-gray-400 mb-1.5" style={MONO}>
             Professional interests
           </label>
           <textarea
-            className="w-full bg-gray-700 text-white rounded-lg p-3 border border-gray-600 focus:border-indigo-500 focus:outline-none resize-none text-sm"
+            className="w-full bg-gray-700 text-white p-3 border border-gray-600 focus:border-indigo-500 focus:outline-none resize-none text-base"
+            style={MONO}
             rows={2}
             value={form.professionalInterests}
             onChange={(e) => update("professionalInterests", e.target.value)}
           />
         </div>
         <div>
-          <label className="block text-sm text-gray-400 mb-1.5">
+          <label className="block text-base text-gray-400 mb-1.5" style={MONO}>
             Target industries / roles
           </label>
           <input
             type="text"
-            className="w-full bg-gray-700 text-white rounded-lg p-3 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
+            className="w-full bg-gray-700 text-white p-3 border border-gray-600 focus:border-indigo-500 focus:outline-none text-base"
+            style={MONO}
             value={form.targetIndustries}
             onChange={(e) => update("targetIndustries", e.target.value)}
           />
         </div>
         <div>
-          <label className="block text-sm text-gray-400 mb-2">
+          <label className="block text-base text-gray-400 mb-2" style={MONO}>
             Experience level
           </label>
           <div className="grid grid-cols-4 gap-2">
@@ -166,11 +174,12 @@ const handleSave = () => {
               <button
                 key={lvl}
                 onClick={() => update("experienceLevel", lvl)}
-                className={`py-2 rounded-lg border text-xs capitalize transition-colors ${
+                className={`py-2 border text-xs capitalize transition-colors ${
                   form.experienceLevel === lvl
                     ? "bg-indigo-600 border-indigo-500 text-white"
                     : "bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500"
                 }`}
+                style={MONO}
               >
                 {lvl}
               </button>
@@ -178,7 +187,7 @@ const handleSave = () => {
           </div>
         </div>
         <div className="flex items-center justify-between">
-          <label className="text-sm text-gray-400">
+          <label className="text-base text-gray-400" style={MONO}>
             Actively seeking internships
           </label>
           <button
@@ -193,34 +202,37 @@ const handleSave = () => {
       </section>
 
       {/* Daily Routine */}
-      <section className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-4">
-        <h2 className="font-semibold text-white">Daily Routine</h2>
+      <section className="bg-gray-800 p-5 border border-gray-700 space-y-4">
+        <h2 className="text-lg font-bold text-white uppercase tracking-wider" style={MONO}>Daily Routine</h2>
 
         {/* Wake / Sleep */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-1.5">Wake up</label>
-            <input type="time" className="w-full bg-gray-700 text-white rounded-lg p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
+            <label className="block text-base text-gray-400 mb-1.5" style={MONO}>Wake up</label>
+            <input type="time" className="w-full bg-gray-700 text-white p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-base"
+              style={MONO}
               value={form.wakeTime ?? "07:30"} onChange={(e) => update("wakeTime", e.target.value)} />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-1.5">Sleep time</label>
-            <input type="time" className="w-full bg-gray-700 text-white rounded-lg p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
+            <label className="block text-base text-gray-400 mb-1.5" style={MONO}>Sleep time</label>
+            <input type="time" className="w-full bg-gray-700 text-white p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-base"
+              style={MONO}
               value={form.sleepTime ?? "23:00"} onChange={(e) => update("sleepTime", e.target.value)} />
           </div>
         </div>
 
         {/* Breakfast */}
-        <div className="border border-gray-600/60 rounded-xl p-4 space-y-3">
+        <div className="border border-gray-600/60 p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-300">Breakfast</label>
+            <label className="text-sm font-medium text-gray-300" style={MONO}>Breakfast</label>
             <button
               onClick={() => update("breakfastTime", form.breakfastTime ? "" : "07:30")}
-              className={`text-xs px-2.5 py-1 rounded-full border font-semibold transition-colors ${
+              className={`text-xs px-2.5 py-1 border font-semibold transition-colors ${
                 form.breakfastTime
                   ? "bg-indigo-600 border-indigo-500 text-white"
                   : "bg-gray-700 border-gray-600 text-gray-400"
               }`}
+              style={MONO}
             >
               {form.breakfastTime ? "On" : "N/A"}
             </button>
@@ -228,13 +240,14 @@ const handleSave = () => {
           {form.breakfastTime ? (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-xs text-gray-500 mb-1">Time</p>
+                <p className="text-xs text-gray-500 mb-1" style={MONO}>Time</p>
                 <input type="time" value={form.breakfastTime}
                   onChange={(e) => update("breakfastTime", e.target.value)}
-                  className="w-full bg-gray-700 text-white rounded-lg p-2 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm" />
+                  className="w-full bg-gray-700 text-white p-2 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
+                  style={MONO} />
               </div>
               <div>
-                <p className="text-xs text-gray-500 mb-1">Duration: <span className="text-indigo-400 font-bold">{form.breakfastDurationMinutes ?? 30} min</span></p>
+                <p className="text-sm text-gray-500 mb-1" style={MONO}>Duration: <span className="text-indigo-400 font-bold">{form.breakfastDurationMinutes ?? 30} min</span></p>
                 <input type="range" min={20} max={90} step={5}
                   value={form.breakfastDurationMinutes ?? 30}
                   onChange={(e) => update("breakfastDurationMinutes", Number(e.target.value))}
@@ -242,21 +255,22 @@ const handleSave = () => {
               </div>
             </div>
           ) : (
-            <p className="text-xs text-gray-600">Not scheduled — toggle On to add a breakfast block.</p>
+            <p className="text-sm text-gray-600" style={MONO}>Not scheduled — toggle On to add a breakfast block.</p>
           )}
         </div>
 
         {/* Lunch */}
-        <div className="border border-gray-600/60 rounded-xl p-4 space-y-3">
+        <div className="border border-gray-600/60 p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-300">Lunch</label>
+            <label className="text-sm font-medium text-gray-300" style={MONO}>Lunch</label>
             <button
               onClick={() => update("lunchStart", form.lunchStart ? "" : "12:00")}
-              className={`text-xs px-2.5 py-1 rounded-full border font-semibold transition-colors ${
+              className={`text-xs px-2.5 py-1 border font-semibold transition-colors ${
                 form.lunchStart
                   ? "bg-indigo-600 border-indigo-500 text-white"
                   : "bg-gray-700 border-gray-600 text-gray-400"
               }`}
+              style={MONO}
             >
               {form.lunchStart ? "On" : "N/A"}
             </button>
@@ -264,13 +278,14 @@ const handleSave = () => {
           {form.lunchStart ? (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-xs text-gray-500 mb-1">Time</p>
+                <p className="text-xs text-gray-500 mb-1" style={MONO}>Time</p>
                 <input type="time" value={form.lunchStart}
                   onChange={(e) => update("lunchStart", e.target.value)}
-                  className="w-full bg-gray-700 text-white rounded-lg p-2 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm" />
+                  className="w-full bg-gray-700 text-white p-2 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
+                  style={MONO} />
               </div>
               <div>
-                <p className="text-xs text-gray-500 mb-1">Duration: <span className="text-indigo-400 font-bold">{form.lunchDurationMinutes ?? 60} min</span></p>
+                <p className="text-sm text-gray-500 mb-1" style={MONO}>Duration: <span className="text-indigo-400 font-bold">{form.lunchDurationMinutes ?? 60} min</span></p>
                 <input type="range" min={20} max={120} step={10}
                   value={form.lunchDurationMinutes ?? 60}
                   onChange={(e) => update("lunchDurationMinutes", Number(e.target.value))}
@@ -278,21 +293,22 @@ const handleSave = () => {
               </div>
             </div>
           ) : (
-            <p className="text-xs text-gray-600">Not scheduled — toggle On to add a lunch block.</p>
+            <p className="text-sm text-gray-600" style={MONO}>Not scheduled — toggle On to add a lunch block.</p>
           )}
         </div>
 
         {/* Dinner */}
-        <div className="border border-gray-600/60 rounded-xl p-4 space-y-3">
+        <div className="border border-gray-600/60 p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-300">Dinner</label>
+            <label className="text-sm font-medium text-gray-300" style={MONO}>Dinner</label>
             <button
               onClick={() => update("dinnerTime", form.dinnerTime ? "" : "18:30")}
-              className={`text-xs px-2.5 py-1 rounded-full border font-semibold transition-colors ${
+              className={`text-xs px-2.5 py-1 border font-semibold transition-colors ${
                 form.dinnerTime
                   ? "bg-indigo-600 border-indigo-500 text-white"
                   : "bg-gray-700 border-gray-600 text-gray-400"
               }`}
+              style={MONO}
             >
               {form.dinnerTime ? "On" : "N/A"}
             </button>
@@ -300,13 +316,14 @@ const handleSave = () => {
           {form.dinnerTime ? (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-xs text-gray-500 mb-1">Time</p>
+                <p className="text-xs text-gray-500 mb-1" style={MONO}>Time</p>
                 <input type="time" value={form.dinnerTime}
                   onChange={(e) => update("dinnerTime", e.target.value)}
-                  className="w-full bg-gray-700 text-white rounded-lg p-2 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm" />
+                  className="w-full bg-gray-700 text-white p-2 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
+                  style={MONO} />
               </div>
               <div>
-                <p className="text-xs text-gray-500 mb-1">Duration: <span className="text-indigo-400 font-bold">{form.dinnerDurationMinutes ?? 60} min</span></p>
+                <p className="text-sm text-gray-500 mb-1" style={MONO}>Duration: <span className="text-indigo-400 font-bold">{form.dinnerDurationMinutes ?? 60} min</span></p>
                 <input type="range" min={30} max={120} step={10}
                   value={form.dinnerDurationMinutes ?? 60}
                   onChange={(e) => update("dinnerDurationMinutes", Number(e.target.value))}
@@ -314,18 +331,18 @@ const handleSave = () => {
               </div>
             </div>
           ) : (
-            <p className="text-xs text-gray-600">Not scheduled — toggle On to add a dinner block.</p>
+            <p className="text-sm text-gray-600" style={MONO}>Not scheduled — toggle On to add a dinner block.</p>
           )}
         </div>
       </section>
 
       {/* Work Hours & Schedule */}
-      <section className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-4">
-        <h2 className="font-semibold text-white">Work Hours &amp; Schedule</h2>
+      <section className="bg-gray-800 p-5 border border-gray-700 space-y-4">
+        <h2 className="text-lg font-bold text-white uppercase tracking-wider" style={MONO}>Work Hours &amp; Schedule</h2>
 
         {/* Workload picker */}
         <div>
-          <label className="block text-sm text-gray-400 mb-2">Schedule intensity</label>
+          <label className="block text-base text-gray-400 mb-2" style={MONO}>Schedule intensity</label>
           <div className="grid grid-cols-2 gap-2">
             {([
               { value: "light", label: "🌱 Light", sub: "0–4h/day" },
@@ -336,14 +353,15 @@ const handleSave = () => {
               <button
                 key={opt.value}
                 onClick={() => update("scheduleIntensity", opt.value)}
-                className={`py-3 px-4 rounded-xl border text-left transition-colors ${
+                className={`py-3 px-4 border text-left transition-colors ${
                   form.scheduleIntensity === opt.value
                     ? "bg-indigo-600 border-indigo-500 text-white"
                     : "bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500"
                 }`}
+                style={MONO}
               >
                 <div className="text-sm font-medium">{opt.label}</div>
-                <div className="text-xs opacity-70 mt-0.5">{opt.sub}</div>
+                <div className="text-sm opacity-70 mt-0.5">{opt.sub}</div>
               </button>
             ))}
           </div>
@@ -351,19 +369,21 @@ const handleSave = () => {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-1.5">Start time</label>
+            <label className="block text-base text-gray-400 mb-1.5" style={MONO}>Start time</label>
             <input
               type="time"
-              className="w-full bg-gray-700 text-white rounded-lg p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
+              className="w-full bg-gray-700 text-white p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-base"
+              style={MONO}
               value={form.preferredStartTime}
               onChange={(e) => update("preferredStartTime", e.target.value)}
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-1.5">End time</label>
+            <label className="block text-base text-gray-400 mb-1.5" style={MONO}>End time</label>
             <input
               type="time"
-              className="w-full bg-gray-700 text-white rounded-lg p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
+              className="w-full bg-gray-700 text-white p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-base"
+              style={MONO}
               value={form.preferredEndTime}
               onChange={(e) => update("preferredEndTime", e.target.value)}
             />
@@ -372,77 +392,82 @@ const handleSave = () => {
       </section>
 
       {/* Reset */}
-      <section className="bg-gray-800 rounded-2xl p-5 border border-red-900/40 space-y-3">
-        <h2 className="font-semibold text-white">Reset Data</h2>
-        <p className="text-sm text-gray-400">
+      <section className="bg-gray-800 p-5 border border-red-900/40 space-y-3">
+        <h2 className="text-lg font-bold text-white uppercase tracking-wider" style={MONO}>Reset Data</h2>
+        <p className="text-base text-gray-400" style={MONO}>
           Clears your calendar and opportunity decisions back to defaults. Your profile settings are kept.
         </p>
         <button
           onClick={handleReset}
           disabled={resetting}
-          className="px-4 py-2 rounded-lg text-sm font-medium bg-red-900/40 hover:bg-red-800/60 text-red-300 border border-red-800/50 transition-colors disabled:opacity-50"
+          className="px-4 py-2 text-base font-medium bg-red-900/40 hover:bg-red-800/60 text-red-300 border border-red-800/50 transition-colors disabled:opacity-50"
+          style={MONO}
         >
           {resetting ? "Resetting…" : "Reset Calendar & Decisions"}
         </button>
       </section>
 
       {/* Scheduling Constraints */}
-      <section className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-4">
+      <section className="bg-gray-800 p-5 border border-gray-700 space-y-4">
         <div>
-          <h2 className="font-semibold text-white">Blocked Time</h2>
-          <p className="text-xs text-gray-500 mt-0.5">These show as unavailable on your calendar and are skipped by the scheduler.</p>
+          <h2 className="text-lg font-bold text-white uppercase tracking-wider" style={MONO}>Blocked Time</h2>
+          <p className="text-xs text-gray-500 mt-0.5" style={MONO}>These show as unavailable on your calendar and are skipped by the scheduler.</p>
         </div>
 
         {/* Existing blocks */}
         {(form.scheduleBlocks ?? []).length === 0 ? (
-          <p className="text-xs text-gray-600">No blocked times added yet.</p>
+          <p className="text-sm text-gray-600" style={MONO}>No blocked times added yet.</p>
         ) : (
           <div className="space-y-2">
             {(form.scheduleBlocks ?? []).map((b) => (
-              <div key={b.id} className="flex items-center justify-between bg-gray-700/60 rounded-xl px-3 py-2.5 border border-gray-600/50">
+              <div key={b.id} className="flex items-center justify-between bg-gray-700/60 px-3 py-2.5 border border-gray-600/50">
                 <div className="min-w-0">
-                  <p className="text-sm text-white font-medium">{b.name}</p>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-base text-white font-medium" style={MONO}>{b.name}</p>
+                  <p className="text-sm text-gray-400" style={MONO}>
                     {b.startTime}–{b.endTime} · {RECURRENCE_LABELS[b.recurrence]}
                     {b.date ? ` · ${b.date}` : ""}
                   </p>
                 </div>
-                <button onClick={() => removeScheduleBlock(b.id)} className="text-gray-500 hover:text-red-400 transition-colors ml-3 shrink-0">✕</button>
+                <button onClick={() => removeScheduleBlock(b.id)} className="text-gray-500 hover:text-red-400 transition-colors ml-3 shrink-0" style={MONO}>✕</button>
               </div>
             ))}
           </div>
         )}
 
         {/* Add new block form */}
-        <div className="border border-gray-600/60 rounded-xl p-4 space-y-3">
-          <p className="text-sm font-medium text-gray-300">Add blocked time</p>
+        <div className="border border-gray-600/60 p-4 space-y-3">
+          <p className="text-base font-medium text-gray-300" style={MONO}>Add blocked time</p>
 
           <input
             value={blockName}
             onChange={(e) => setBlockName(e.target.value)}
             placeholder="Event name (e.g. Gym, No work)"
-            className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none placeholder-gray-500"
+            className="w-full bg-gray-700 text-white text-base px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none placeholder-gray-500"
+            style={MONO}
           />
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Start time</label>
+              <label className="block text-sm text-gray-500 mb-1" style={MONO}>Start time</label>
               <input type="time" value={blockStart} onChange={(e) => setBlockStart(e.target.value)}
-                className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none" />
+                className="w-full bg-gray-700 text-white text-base px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                style={MONO} />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">End time</label>
+              <label className="block text-sm text-gray-500 mb-1" style={MONO}>End time</label>
               <input type="time" value={blockEnd} onChange={(e) => setBlockEnd(e.target.value)}
-                className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none" />
+                className="w-full bg-gray-700 text-white text-base px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                style={MONO} />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Repeats</label>
+            <label className="block text-sm text-gray-500 mb-1" style={MONO}>Repeats</label>
             <div className="flex flex-wrap gap-1.5">
               {(Object.keys(RECURRENCE_LABELS) as ScheduleBlockRecurrence[]).map((r) => (
                 <button key={r} onClick={() => setBlockRecurrence(r)}
-                  className={`px-3 py-1 rounded-full text-xs border transition-colors ${blockRecurrence === r ? "bg-indigo-600 border-indigo-500 text-white" : "bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500"}`}>
+                  className={`px-3 py-1 text-sm border transition-colors ${blockRecurrence === r ? "bg-indigo-600 border-indigo-500 text-white" : "bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500"}`}
+                  style={MONO}>
                   {RECURRENCE_LABELS[r]}
                 </button>
               ))}
@@ -451,18 +476,20 @@ const handleSave = () => {
 
           {(blockRecurrence === 'none' || blockRecurrence === 'weekly') && (
             <div>
-              <label className="block text-xs text-gray-500 mb-1">
+              <label className="block text-sm text-gray-500 mb-1" style={MONO}>
                 {blockRecurrence === 'none' ? 'Date' : 'Starting date (sets day of week)'}
               </label>
               <input type="date" value={blockDate} onChange={(e) => setBlockDate(e.target.value)}
-                className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none" />
+                className="w-full bg-gray-700 text-white text-base px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                style={MONO} />
             </div>
           )}
 
           <button
             onClick={addScheduleBlock}
             disabled={!blockName.trim() || !blockStart || !blockEnd || ((blockRecurrence === 'none' || blockRecurrence === 'weekly') && !blockDate)}
-            className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+            className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-base font-medium transition-colors"
+            style={MONO}
           >
             Add Block
           </button>

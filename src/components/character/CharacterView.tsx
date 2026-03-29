@@ -21,6 +21,9 @@ import type {
   CharacterAppearance,
 } from "@/types";
 
+const DOT  = { fontFamily: "var(--font-dot)"  } as const;
+const MONO = { fontFamily: "var(--font-mono)" } as const;
+
 // ── Radar / pentagon stat chart ───────────────────────────────────────────────
 function RadarChart({
   stats,
@@ -29,9 +32,9 @@ function RadarChart({
   stats: CharacterStats;
   palette: ArchetypePalette;
 }) {
-  const CX = 100,
-    CY = 105,
-    R = 72;
+  const CX = 120,
+    CY = 125,
+    R = 95;
   const keys: (keyof CharacterStats)[] = [
     "focus",
     "career",
@@ -48,7 +51,7 @@ function RadarChart({
     .join(" ");
 
   return (
-    <svg viewBox="0 0 200 220" className="w-full max-w-50 mx-auto">
+    <svg viewBox="0 0 250 265" className="w-full max-w-64 mx-auto">
       {/* Grid polygons */}
       {[0.25, 0.5, 0.75, 1].map((lvl) => (
         <polygon
@@ -95,14 +98,14 @@ function RadarChart({
       ))}
       {/* Labels */}
       {keys.map((k, i) => {
-        const lr = R + 18;
+        const lr = R + 22;
         return (
           <g key={k}>
             <text
               x={px(i, lr)}
               y={py(i, lr) - 3}
               textAnchor="middle"
-              fontSize={7}
+              fontSize={9}
               fill={STAT_META[k].color}
               fontWeight="600"
             >
@@ -112,7 +115,7 @@ function RadarChart({
               x={px(i, lr)}
               y={py(i, lr) + 7}
               textAnchor="middle"
-              fontSize={6.5}
+              fontSize={8}
               fill="#9CA3AF"
             >
               {stats[k]}
@@ -246,7 +249,7 @@ function TrendGraph({ history }: { history: StatSnapshot[] }) {
               className="w-3 h-1.5 rounded-full"
               style={{ backgroundColor: STAT_META[key].color }}
             />
-            <span className="text-[10px] text-gray-500">
+            <span style={MONO} className="text-[10px] text-gray-500">
               {STAT_META[key].label}
             </span>
           </div>
@@ -283,16 +286,16 @@ function StatBar({
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-1.5">
           <span className="text-sm">{meta.icon}</span>
-          <span className="text-xs font-semibold text-gray-200">
+          <span style={MONO} className="text-sm font-semibold text-gray-200">
             {meta.label}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className={`text-xs font-bold ${trendColor}`}>{trend}</span>
-          <span className="text-xs font-bold text-white tabular-nums">
+          <span style={MONO} className={`text-sm font-bold ${trendColor}`}>{trend}</span>
+          <span style={MONO} className="text-sm font-bold text-white tabular-nums">
             {value}
           </span>
-          <span className="text-[10px] text-gray-600">/ 100</span>
+          <span style={MONO} className="text-xs text-gray-600">/ 100</span>
         </div>
       </div>
       <div className="h-2 bg-gray-700/60 rounded-full overflow-hidden">
@@ -305,7 +308,7 @@ function StatBar({
           }}
         />
       </div>
-      <p className="text-[10px] text-gray-600 mt-0.5">{meta.desc}</p>
+      <p style={MONO} className="text-xs text-gray-600 mt-0.5">{meta.desc}</p>
     </div>
   );
 }
@@ -372,10 +375,10 @@ function CharacterSetup() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
       <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-white mb-2">
+        <h1 style={DOT} className="text-2xl font-bold text-white mb-2">
           Create Your Character
         </h1>
-        <p className="text-gray-400 text-sm leading-relaxed max-w-md mx-auto">
+        <p style={MONO} className="text-gray-400 text-sm leading-relaxed max-w-md mx-auto">
           This character is an alternate version of you — shaped by how you
           spend your time and energy. Their color palette will shift
           automatically as you grow.
@@ -386,7 +389,7 @@ function CharacterSetup() {
         {/* Live sprite preview */}
         <div className="shrink-0 flex flex-col items-center gap-3 sm:sticky sm:top-24 mx-auto sm:mx-0">
           <div
-            className="rounded-2xl p-6 border flex items-center justify-center"
+            className="p-6 border flex items-center justify-center"
             style={{
               borderColor: `${previewPalette.glow}30`,
               background: `radial-gradient(ellipse at center, ${previewPalette.glow}18, transparent 70%), #1f2937`,
@@ -408,8 +411,8 @@ function CharacterSetup() {
 
         {/* Customisation + name */}
         <div className="flex-1 space-y-5">
-          <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-5">
-            <h2 className="text-sm font-semibold text-white">
+          <div className="bg-gray-800 p-5 border border-gray-700 space-y-5">
+            <h2 style={MONO} className="text-sm font-semibold text-white uppercase tracking-wider">
               Customise appearance
             </h2>
             <OptionRow
@@ -432,14 +435,15 @@ function CharacterSetup() {
             />
           </div>
 
-          <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-4">
-            <h2 className="text-sm font-semibold text-white">
+          <div className="bg-gray-800 p-5 border border-gray-700 space-y-4">
+            <h2 style={MONO} className="text-sm font-semibold text-white uppercase tracking-wider">
               Give them a name
             </h2>
             <input
               autoFocus
               type="text"
               maxLength={24}
+              style={MONO}
               className="w-full bg-gray-700 text-white rounded-xl px-4 py-3 border border-gray-600 focus:border-indigo-500 focus:outline-none placeholder-gray-500 text-sm"
               placeholder="e.g. Aelith, Nova, Kiran…"
               value={name}
@@ -454,7 +458,8 @@ function CharacterSetup() {
             {error && <p className="text-xs text-red-400">{error}</p>}
             <button
               onClick={handleSubmit}
-              className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-colors"
+              style={MONO}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-colors"
             >
               Begin the Journey →
             </button>
@@ -501,7 +506,7 @@ export default function CharacterView() {
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
       {/* ── Hero banner ────────────────────────────────────────────────────── */}
       <div
-        className="rounded-2xl border relative overflow-hidden"
+        className="border relative overflow-hidden"
         style={{
           borderColor: `${palette.glow}35`,
           background: `radial-gradient(ellipse at top left, ${palette.glow}22, transparent 55%), radial-gradient(ellipse at bottom right, ${palette.glow}0d, transparent 50%), #0F1117`,
@@ -520,7 +525,7 @@ export default function CharacterView() {
           {/* Sprite */}
           <div className="shrink-0 flex flex-col items-center gap-3">
             <div
-              className="rounded-2xl p-4 border"
+              className="p-4 border"
               style={{
                 borderColor: `${palette.glow}25`,
                 background: `radial-gradient(ellipse at center, ${palette.glow}18, transparent 70%), #111827`,
@@ -537,6 +542,7 @@ export default function CharacterView() {
             </div>
             <button
               onClick={refreshCharacterStats}
+              style={MONO}
               className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors flex items-center gap-1"
             >
               ↻ sync stats
@@ -547,7 +553,7 @@ export default function CharacterView() {
           <div className="flex-1 min-w-0 text-center sm:text-left">
             {/* Name + level */}
             <div className="flex items-center justify-center sm:justify-start gap-3 mb-1">
-              <h1 className="text-3xl font-bold text-white tracking-tight">
+              <h1 style={DOT} className="text-5xl font-bold text-white tracking-tight">
                 {character.name}
               </h1>
               <span
@@ -564,8 +570,8 @@ export default function CharacterView() {
 
             {/* Archetype */}
             <p
-              className="text-base font-semibold mb-4 tracking-wide uppercase"
-              style={{ color: `${palette.glow}cc` }}
+              style={{ ...MONO, color: `${palette.glow}cc` }}
+              className="text-lg font-semibold mb-4 tracking-wide uppercase"
             >
               {character.archetype}
             </p>
@@ -573,10 +579,10 @@ export default function CharacterView() {
             {/* XP bar */}
             <div className="mb-5 max-w-xs mx-auto sm:mx-0">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] text-gray-500 font-medium">
+                <span style={MONO} className="text-base text-gray-500 font-medium">
                   Progress to Lv {character.level + 1}
                 </span>
-                <span className="text-[11px] text-gray-500 tabular-nums">
+                <span style={MONO} className="text-xs text-gray-500 tabular-nums">
                   {lvlProgress.current} / {lvlProgress.needed} xp
                 </span>
               </div>
@@ -599,8 +605,9 @@ export default function CharacterView() {
                 return (
                   <div
                     key={signal}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium"
+                    className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full border font-medium"
                     style={{
+                      ...MONO,
                       color: m.color,
                       borderColor: `${m.color}40`,
                       backgroundColor: `${m.color}15`,
@@ -620,10 +627,10 @@ export default function CharacterView() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* ── Stats ──────────────────────────────────────────────────────── */}
-        <section className="bg-gray-800/80 rounded-2xl p-5 border border-gray-700 space-y-4">
+        <section className="bg-gray-800/80 p-5 border border-gray-700 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-white">Core Stats</h2>
-            <span className="text-[10px] text-gray-500">
+            <h2 style={MONO} className="text-lg font-bold uppercase tracking-wider text-white">Core Stats</h2>
+            <span style={MONO} className="text-xs text-gray-500">
               from your calendar activity
             </span>
           </div>
@@ -646,7 +653,7 @@ export default function CharacterView() {
           </div>
 
           {prevSnap && (
-            <p className="text-[10px] text-gray-600 pt-2 border-t border-gray-700 leading-relaxed">
+            <p style={MONO} className="text-xs text-gray-600 pt-2 border-t border-gray-700 leading-relaxed">
               Compared to last session ·{" "}
               {(() => {
                 const keys = Object.keys(stats) as (keyof CharacterStats)[];
@@ -676,8 +683,8 @@ export default function CharacterView() {
         {/* ── Signals + Suggestions ──────────────────────────────────────── */}
         <div className="space-y-5">
           {/* Signals detail */}
-          <section className="bg-gray-800/80 rounded-2xl p-5 border border-gray-700">
-            <h2 className="font-semibold text-white mb-4">
+          <section className="bg-gray-800/80 p-5 border border-gray-700">
+            <h2 style={MONO} className="text-lg font-bold uppercase tracking-wider text-white mb-4">
               What {character.name} is experiencing
             </h2>
             <div className="space-y-3">
@@ -686,18 +693,18 @@ export default function CharacterView() {
                 return (
                   <div
                     key={signal}
-                    className={`rounded-xl p-3.5 border ${m.bg}`}
+                    className={`p-3.5 border ${m.bg}`}
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <span>{m.icon}</span>
                       <span
-                        className="text-xs font-semibold"
-                        style={{ color: m.color }}
+                        style={{ ...MONO, color: m.color }}
+                        className="text-sm font-semibold"
                       >
                         {m.label}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-300 leading-relaxed">
+                    <p style={MONO} className="text-sm text-gray-300 leading-relaxed">
                       {m.desc(character.name)}
                     </p>
                   </div>
@@ -707,11 +714,11 @@ export default function CharacterView() {
           </section>
 
           {/* Suggestions */}
-          <section className="bg-gray-800/80 rounded-2xl p-5 border border-gray-700">
-            <h2 className="font-semibold text-white mb-1">
+          <section className="bg-gray-800/80 p-5 border border-gray-700">
+            <h2 style={MONO} className="text-lg font-bold uppercase tracking-wider text-white mb-1">
               Character Insights
             </h2>
-            <p className="text-[10px] text-gray-500 mb-4">
+            <p style={MONO} className="text-xs text-gray-500 mb-4">
               Observations from {character.name}&apos;s journey
             </p>
             <div className="space-y-3">
@@ -721,147 +728,171 @@ export default function CharacterView() {
                     className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
                     style={{ backgroundColor: palette.glow }}
                   />
-                  <p className="text-sm text-gray-300 leading-relaxed">{s}</p>
+                  <p style={MONO} className="text-base text-gray-300 leading-relaxed">{s}</p>
                 </div>
               ))}
             </div>
+          </section>
+
+          {/* ── Appearance editor ────────────────────────────────────────── */}
+          <section className="bg-gray-800/80 p-5 border border-gray-700">
+            <div className="flex items-center justify-between mb-1">
+              <h2 style={MONO} className="text-lg font-bold uppercase tracking-wider text-white">Appearance</h2>
+              <button
+                onClick={() => setEditingAppearance((v) => !v)}
+                style={MONO}
+                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+              >
+                {editingAppearance ? "Done" : "Edit ✏️"}
+              </button>
+            </div>
+            <p style={MONO} className="text-xs text-gray-500 mb-4">
+              Shape is yours to customise — colors &amp; outfit upgrade automatically
+              as you level up
+            </p>
+
+            {/* Outfit tier progression */}
+            <div className="flex gap-2 flex-wrap mb-4">
+              {(["basic", "skilled", "advanced", "elite"] as const).map((tier) => {
+                const current = getOutfitTier(character.level);
+                const tiers = ["basic", "skilled", "advanced", "elite"];
+                const unlocked = tiers.indexOf(tier) <= tiers.indexOf(current);
+                return (
+                  <div
+                    key={tier}
+                    className={`flex-1 min-w-[80px] px-3 py-2 border text-center transition-all ${
+                      tier === current
+                        ? "border-indigo-500/60 bg-indigo-600/15"
+                        : unlocked
+                          ? "border-gray-600 bg-gray-700/40"
+                          : "border-gray-700/40 bg-gray-800/30 opacity-40"
+                    }`}
+                  >
+                    <p
+                      style={{ ...MONO, color: tier === current ? palette.glow : "#9CA3AF" }}
+                      className="text-xs font-semibold mb-0.5"
+                    >
+                      {OUTFIT_TIER_LABELS[tier]}
+                      {tier === current && " ✦"}
+                    </p>
+                    <p style={MONO} className="text-[10px] text-gray-600">
+                      {OUTFIT_TIER_UNLOCK[tier]}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {editingAppearance && (
+              <div className="flex flex-col sm:flex-row gap-6 items-start pt-3 border-t border-gray-700/60">
+                {/* Live preview */}
+                <div className="shrink-0 flex flex-col items-center gap-2 mx-auto sm:mx-0">
+                  <div
+                    className="p-4 border"
+                    style={{
+                      borderColor: `${palette.glow}25`,
+                      background: `radial-gradient(ellipse at center, ${palette.glow}15, transparent 70%), #111827`,
+                    }}
+                  >
+                    <PixelSprite
+                      palette={palette}
+                      scale={7}
+                      animated
+                      signals={character.signals}
+                      appearance={character.appearance}
+                      level={character.level}
+                    />
+                  </div>
+                  <span
+                    style={{ ...MONO, color: palette.glow }}
+                    className="text-xs font-medium"
+                  >
+                    {OUTFIT_TIER_LABELS[getOutfitTier(character.level)]} tier
+                  </span>
+                </div>
+
+                {/* Pickers */}
+                <div className="flex-1 space-y-4">
+                  <OptionRow
+                    label="Hair"
+                    options={HAIR_OPTIONS}
+                    value={character.appearance?.hairStyle ?? DEFAULT_APPEARANCE.hairStyle}
+                    onChange={(v) =>
+                      updateCharacterAppearance({
+                        ...(character.appearance ?? DEFAULT_APPEARANCE),
+                        hairStyle: v,
+                      })
+                    }
+                  />
+                  <OptionRow
+                    label="Eyes"
+                    options={EYE_OPTIONS}
+                    value={character.appearance?.eyeStyle ?? DEFAULT_APPEARANCE.eyeStyle}
+                    onChange={(v) =>
+                      updateCharacterAppearance({
+                        ...(character.appearance ?? DEFAULT_APPEARANCE),
+                        eyeStyle: v,
+                      })
+                    }
+                  />
+                  <OptionRow
+                    label="Face shape"
+                    options={FACE_OPTIONS}
+                    value={character.appearance?.faceShape ?? DEFAULT_APPEARANCE.faceShape}
+                    onChange={(v) =>
+                      updateCharacterAppearance({
+                        ...(character.appearance ?? DEFAULT_APPEARANCE),
+                        faceShape: v,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            )}
           </section>
         </div>
       </div>
 
       {/* ── Trend graph ────────────────────────────────────────────────────── */}
-      <section className="bg-gray-800/80 rounded-2xl p-5 border border-gray-700">
+      <section className="bg-gray-800/80 p-5 border border-gray-700">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-white">Stat Trends</h2>
-          <span className="text-[10px] text-gray-500">
+          <h2 style={MONO} className="text-lg font-bold uppercase tracking-wider text-white">Stat Trends</h2>
+          <span style={MONO} className="text-xs text-gray-500">
             Last {character.statHistory.length} recorded sessions
           </span>
         </div>
         <TrendGraph history={character.statHistory} />
       </section>
 
-      {/* ── Appearance editor ──────────────────────────────────────────────── */}
-      <section className="bg-gray-800/80 rounded-2xl p-5 border border-gray-700">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="font-semibold text-white">Appearance</h2>
-          <button
-            onClick={() => setEditingAppearance((v) => !v)}
-            className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-          >
-            {editingAppearance ? "Done" : "Edit ✏️"}
-          </button>
-        </div>
-        <p className="text-[10px] text-gray-500 mb-4">
-          Shape is yours to customise — colors &amp; outfit upgrade automatically
-          as you level up
-        </p>
-
-        {/* Outfit tier progression */}
-        <div className="flex gap-2 flex-wrap mb-4">
-          {(["basic", "skilled", "advanced", "elite"] as const).map((tier) => {
-            const current = getOutfitTier(character.level);
-            const tiers = ["basic", "skilled", "advanced", "elite"];
-            const unlocked = tiers.indexOf(tier) <= tiers.indexOf(current);
+      {/* ── Activity Breakdown ────────────────────────────────────────── */}
+      <section className="border border-gray-700 p-5 space-y-4">
+        <h2 style={MONO} className="text-lg font-bold uppercase tracking-wider text-white">
+          Activity Breakdown
+        </h2>
+        <div className="grid grid-cols-5 gap-3">
+          {(Object.keys(stats) as (keyof CharacterStats)[]).map((key) => {
+            const meta = STAT_META[key];
+            const val = stats[key];
+            const tier = val >= 70 ? "PEAK" : val >= 50 ? "ACTIVE" : val >= 35 ? "STEADY" : "QUIET";
+            const tierColor = val >= 70 ? "#22C55E" : val >= 50 ? palette.glow : val >= 35 ? "#9CA3AF" : "#4B5563";
             return (
-              <div
-                key={tier}
-                className={`flex-1 min-w-[80px] rounded-xl px-3 py-2 border text-center transition-all ${
-                  tier === current
-                    ? "border-indigo-500/60 bg-indigo-600/15"
-                    : unlocked
-                      ? "border-gray-600 bg-gray-700/40"
-                      : "border-gray-700/40 bg-gray-800/30 opacity-40"
-                }`}
-              >
-                <p
-                  className="text-[10px] font-semibold mb-0.5"
-                  style={{ color: tier === current ? palette.glow : "#9CA3AF" }}
-                >
-                  {OUTFIT_TIER_LABELS[tier]}
-                  {tier === current && " ✦"}
-                </p>
-                <p className="text-[9px] text-gray-600">
-                  {OUTFIT_TIER_UNLOCK[tier]}
-                </p>
+              <div key={key} className="flex flex-col items-center gap-1.5 p-3 border border-gray-700/60 bg-gray-800/40">
+                <span className="text-3xl">{meta.icon}</span>
+                <span style={MONO} className="text-sm uppercase tracking-wide text-gray-400">{meta.label}</span>
+                <span style={MONO} className="text-3xl font-bold text-white tabular-nums">{val}</span>
+                <span style={{ ...MONO, color: tierColor }} className="text-sm font-bold uppercase">{tier}</span>
               </div>
             );
           })}
         </div>
-
-        {editingAppearance && (
-          <div className="flex flex-col sm:flex-row gap-6 items-start pt-3 border-t border-gray-700/60">
-            {/* Live preview */}
-            <div className="shrink-0 flex flex-col items-center gap-2 mx-auto sm:mx-0">
-              <div
-                className="rounded-2xl p-4 border"
-                style={{
-                  borderColor: `${palette.glow}25`,
-                  background: `radial-gradient(ellipse at center, ${palette.glow}15, transparent 70%), #111827`,
-                }}
-              >
-                <PixelSprite
-                  palette={palette}
-                  scale={7}
-                  animated
-                  signals={character.signals}
-                  appearance={character.appearance}
-                  level={character.level}
-                />
-              </div>
-              <span
-                className="text-[10px] font-medium"
-                style={{ color: palette.glow }}
-              >
-                {OUTFIT_TIER_LABELS[getOutfitTier(character.level)]} tier
-              </span>
-            </div>
-
-            {/* Pickers */}
-            <div className="flex-1 space-y-4">
-              <OptionRow
-                label="Hair"
-                options={HAIR_OPTIONS}
-                value={character.appearance?.hairStyle ?? DEFAULT_APPEARANCE.hairStyle}
-                onChange={(v) =>
-                  updateCharacterAppearance({
-                    ...(character.appearance ?? DEFAULT_APPEARANCE),
-                    hairStyle: v,
-                  })
-                }
-              />
-              <OptionRow
-                label="Eyes"
-                options={EYE_OPTIONS}
-                value={character.appearance?.eyeStyle ?? DEFAULT_APPEARANCE.eyeStyle}
-                onChange={(v) =>
-                  updateCharacterAppearance({
-                    ...(character.appearance ?? DEFAULT_APPEARANCE),
-                    eyeStyle: v,
-                  })
-                }
-              />
-              <OptionRow
-                label="Face shape"
-                options={FACE_OPTIONS}
-                value={character.appearance?.faceShape ?? DEFAULT_APPEARANCE.faceShape}
-                onChange={(v) =>
-                  updateCharacterAppearance({
-                    ...(character.appearance ?? DEFAULT_APPEARANCE),
-                    faceShape: v,
-                  })
-                }
-              />
-            </div>
-          </div>
-        )}
       </section>
 
       {/* ── About ──────────────────────────────────────────────────────────── */}
-      <div className="rounded-2xl p-5 border border-gray-700/50 bg-gray-800/40">
-        <h2 className="font-semibold text-gray-300 mb-2 text-sm">
+      <div className="p-5 border border-gray-700/50 bg-gray-800/40">
+        <h2 style={DOT} className="font-semibold text-gray-300 mb-2 text-lg">
           How this works
         </h2>
-        <p className="text-xs text-gray-500 leading-relaxed">
+        <p style={MONO} className="text-sm text-gray-500 leading-relaxed">
           {character.name}&apos;s stats are derived from the last 30 days of your
           calendar activity — weighted toward what&apos;s recent. Stats drift gently
           when an area goes quiet and recover quickly when attention returns.

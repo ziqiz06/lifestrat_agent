@@ -5,6 +5,9 @@ import { CalendarTask, Conflict, TaskType } from "@/types";
 import { scheduleBlockAppliesToDate } from "@/lib/dayPlanner";
 import { detectOverflow } from "@/lib/dayPlanner";
 
+const DOT  = { fontFamily: "var(--font-dot)"  } as const;
+const MONO = { fontFamily: "var(--font-mono)" } as const;
+
 // ── Grid constants ─────────────────────────────────────────────────────────────
 const HOUR_HEIGHT = 64;
 const START_HOUR = 7;
@@ -224,7 +227,7 @@ function TaskBlock({
           {isTall && (
             <span
               className="text-[10px] font-semibold truncate"
-              style={{ color: task.color }}
+              style={{ color: task.color, ...MONO }}
             >
               {task.startTime}–{task.endTime}
             </span>
@@ -237,6 +240,7 @@ function TaskBlock({
             WebkitLineClamp: isTall ? 2 : 1,
             WebkitBoxOrient: "vertical",
             overflow: "hidden",
+            ...MONO,
           }}
         >
           {task.title}
@@ -246,14 +250,16 @@ function TaskBlock({
           <div className="flex gap-1 mt-auto pt-0.5" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={(e) => { e.stopPropagation(); onExtend(30); }}
-              className="text-[9px] px-1 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white/70 transition-colors leading-none"
+              className="text-[9px] px-1 py-0.5 bg-white/10 hover:bg-white/20 text-white/70 transition-colors leading-none"
+              style={MONO}
               title="Extend by 30 minutes"
             >
               +30m
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onExtend(60); }}
-              className="text-[9px] px-1 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white/70 transition-colors leading-none"
+              className="text-[9px] px-1 py-0.5 bg-white/10 hover:bg-white/20 text-white/70 transition-colors leading-none"
+              style={MONO}
               title="Extend by 1 hour"
             >
               +1h
@@ -330,7 +336,7 @@ function AddEventModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl overflow-hidden">
+      <div className="w-full max-w-md bg-gray-900 border border-gray-700 shadow-2xl overflow-hidden">
         {/* Coloured accent bar — updates live with type */}
         <div
           className="h-1 w-full transition-colors duration-200"
@@ -340,11 +346,12 @@ function AddEventModal({
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {/* Header */}
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold text-white">Add Event</h2>
+            <h2 className="text-lg font-semibold text-white uppercase tracking-wider" style={MONO}>Add Event</h2>
             <button
               type="button"
               onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors text-sm"
+              className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-white hover:bg-gray-700 transition-colors text-sm"
+              style={MONO}
             >
               ✕
             </button>
@@ -352,11 +359,12 @@ function AddEventModal({
 
           {/* Title */}
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5">Title</label>
+            <label className="block text-sm text-gray-400 mb-1.5" style={MONO}>Title</label>
             <input
               autoFocus
               type="text"
-              className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none placeholder-gray-500"
+              className="w-full bg-gray-800 text-white px-3 py-2 text-base border border-gray-600 focus:border-indigo-500 focus:outline-none placeholder-gray-500"
+              style={MONO}
               placeholder="e.g. Coffee chat with recruiter"
               value={title}
               onChange={(e) => {
@@ -368,18 +376,19 @@ function AddEventModal({
 
           {/* Type picker */}
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5">Type</label>
+            <label className="block text-sm text-gray-400 mb-1.5" style={MONO}>Type</label>
             <div className="grid grid-cols-2 gap-1.5">
               {TYPE_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
                   onClick={() => setType(opt.value)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-colors text-left ${
+                  className={`flex items-center gap-2 px-3 py-2 border text-sm transition-colors text-left ${
                     type === opt.value
                       ? "border-gray-500 bg-gray-700 text-white"
                       : "border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-600 hover:text-gray-300"
                   }`}
+                  style={MONO}
                 >
                   <div
                     className="w-2 h-2 rounded-full shrink-0"
@@ -393,10 +402,11 @@ function AddEventModal({
 
           {/* Date */}
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5">Date</label>
+            <label className="block text-sm text-gray-400 mb-1.5" style={MONO}>Date</label>
             <input
               type="date"
-              className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none"
+              className="w-full bg-gray-800 text-white px-3 py-2 text-base border border-gray-600 focus:border-indigo-500 focus:outline-none"
+              style={MONO}
               value={date}
               onChange={(e) => setDate(e.target.value)}
             />
@@ -405,23 +415,25 @@ function AddEventModal({
           {/* Start / End time */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-400 mb-1.5">
+              <label className="block text-sm text-gray-400 mb-1.5" style={MONO}>
                 Start time
               </label>
               <input
                 type="time"
-                className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                className="w-full bg-gray-800 text-white px-3 py-2 text-base border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                style={MONO}
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1.5">
+              <label className="block text-sm text-gray-400 mb-1.5" style={MONO}>
                 End time
               </label>
               <input
                 type="time"
-                className="w-full bg-gray-800 text-white rounded-lg px-3 py-2 text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                className="w-full bg-gray-800 text-white px-3 py-2 text-base border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                style={MONO}
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
               />
@@ -429,21 +441,22 @@ function AddEventModal({
           </div>
 
           {/* Validation error */}
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-sm text-red-400" style={MONO}>{error}</p>}
 
           {/* Actions */}
           <div className="flex gap-2 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm border border-gray-600 transition-colors"
+              className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-base border border-gray-600 transition-colors"
+              style={MONO}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 py-2 rounded-lg text-white text-sm font-medium transition-colors"
-              style={{ backgroundColor: selectedType.color }}
+              className="flex-1 py-2 text-white text-base font-medium transition-colors"
+              style={{ backgroundColor: selectedType.color, ...MONO }}
             >
               Add to Calendar
             </button>
@@ -522,7 +535,7 @@ function TaskPopover({
       {/* Popover card */}
       <div
         style={{ position: "fixed", left, top, width: POPOVER_W, zIndex: 50 }}
-        className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden"
+        className="bg-gray-900 border border-gray-700 shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Coloured accent bar */}
@@ -537,19 +550,19 @@ function TaskPopover({
                   className="w-2 h-2 rounded-full shrink-0"
                   style={{ backgroundColor: task.color }}
                 />
-                <span className="text-[10px] text-gray-500 uppercase tracking-wider truncate">
+                <span className="text-xs text-gray-500 uppercase tracking-wider truncate" style={MONO}>
                   {typeLabel}
                 </span>
                 {!confirmed && (
-                  <span className="text-[10px] text-yellow-400 border border-yellow-600/40 rounded px-1 leading-tight">
+                  <span className="text-xs text-yellow-400 border border-yellow-600/40 px-1 leading-tight" style={MONO}>
                     unconfirmed
                   </span>
                 )}
               </div>
-              <h3 className="text-sm font-semibold text-white leading-snug">
+              <h3 className="text-base font-semibold text-white leading-snug" style={MONO}>
                 {task.title}
               </h3>
-              <p className="text-xs text-gray-400 mt-0.5">
+              <p className="text-sm text-gray-400 mt-0.5" style={MONO}>
                 {task.date}&nbsp;·&nbsp;{task.startTime}–{task.endTime}
                 {task.totalScheduledMinutes != null && (
                   <span className="ml-2 text-gray-500">
@@ -561,20 +574,21 @@ function TaskPopover({
                 )}
               </p>
               {task.status && task.status !== 'confirmed' && (
-                <div className={`mt-1 text-[10px] px-2 py-0.5 rounded-full inline-block font-medium ${
+                <div className={`mt-1 text-[10px] px-2 py-0.5 inline-block font-medium ${
                   task.status === 'needs_confirmation' ? 'bg-yellow-900/50 text-yellow-300' :
                   task.status === 'scheduling_conflict' ? 'bg-red-900/50 text-red-300' :
                   task.status === 'deferred' ? 'bg-gray-700 text-gray-400' :
                   task.status === 'awaiting_permission' ? 'bg-orange-900/50 text-orange-300' :
                   task.status === 'unscheduled' ? 'bg-gray-700 text-gray-500' : ''
-                }`}>
+                }`} style={MONO}>
                   {task.status.replace(/_/g, ' ')}
                 </div>
               )}
             </div>
             <button
               onClick={onClose}
-              className="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors text-sm"
+              className="shrink-0 w-6 h-6 flex items-center justify-center text-gray-500 hover:text-white hover:bg-gray-700 transition-colors text-base"
+              style={MONO}
             >
               ✕
             </button>
@@ -582,8 +596,8 @@ function TaskPopover({
 
           {/* Unconfirmed notice */}
           {!confirmed && (
-            <div className="mb-3 rounded-xl bg-yellow-500/10 border border-yellow-600/30 p-3">
-              <p className="text-xs text-yellow-300 mb-2 leading-relaxed">
+            <div className="mb-3 bg-yellow-500/10 border border-yellow-600/30 p-3">
+              <p className="text-xs text-yellow-300 mb-2 leading-relaxed" style={MONO}>
                 This event hasn&apos;t been confirmed yet. Lock it in to include
                 it in your plan.
               </p>
@@ -592,7 +606,8 @@ function TaskPopover({
                   onConfirm();
                   onClose();
                 }}
-                className="w-full text-xs bg-yellow-500/20 hover:bg-yellow-500/35 text-yellow-200 border border-yellow-500/40 rounded-lg px-3 py-2 transition-colors font-medium"
+                className="w-full text-sm bg-yellow-500/20 hover:bg-yellow-500/35 text-yellow-200 border border-yellow-500/40 px-3 py-2 transition-colors font-medium"
+                style={MONO}
               >
                 Confirm Attendance ✓
               </button>
@@ -602,17 +617,17 @@ function TaskPopover({
           {/* Conflict section or no-conflict footer */}
           {conflict && conflict.isBlockedTime ? (
             // Blocked-time conflict — no resolution options, just a warning
-            <div className="rounded-xl bg-orange-950/40 border border-orange-800/40 p-3">
+            <div className="bg-orange-950/40 border border-orange-800/40 p-3">
               <div className="flex items-start gap-2">
                 <span className="text-orange-400 text-sm shrink-0 mt-0.5">⚠</span>
                 <div>
-                  <p className="text-xs text-orange-300 font-semibold leading-tight">
+                  <p className="text-sm text-orange-300 font-semibold leading-tight" style={MONO}>
                     Overlaps blocked time
                   </p>
-                  <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                  <p className="text-sm text-gray-400 mt-1 leading-relaxed" style={MONO}>
                     {conflict.reason}
                   </p>
-                  <p className="text-xs text-gray-500 mt-1.5">
+                  <p className="text-sm text-gray-500 mt-1.5" style={MONO}>
                     Move this event or adjust the blocked interval in Preferences.
                   </p>
                 </div>
@@ -620,14 +635,14 @@ function TaskPopover({
             </div>
           ) : conflict && conflictPartner ? (
             // Task-to-task conflict — user chooses which to keep
-            <div className="rounded-xl bg-red-950/40 border border-red-800/40 p-3 space-y-3">
+            <div className="bg-red-950/40 border border-red-800/40 p-3 space-y-3">
               <div className="flex items-start gap-2">
                 <span className="text-red-400 text-sm shrink-0 mt-0.5">⚠</span>
                 <div>
-                  <p className="text-xs text-red-300 font-semibold leading-tight">
+                  <p className="text-sm text-red-300 font-semibold leading-tight" style={MONO}>
                     Scheduling conflict
                   </p>
-                  <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
+                  <p className="text-sm text-gray-400 mt-0.5 leading-relaxed" style={MONO}>
                     Overlaps with{" "}
                     <span className="text-white font-medium">
                       &quot;{conflictPartner.title}&quot;
@@ -640,14 +655,16 @@ function TaskPopover({
               <div className="space-y-1.5">
                 <button
                   onClick={() => { onResolve(task.id); onClose(); }}
-                  className="w-full text-left text-xs bg-indigo-600/25 hover:bg-indigo-600/45 text-indigo-200 border border-indigo-600/40 rounded-lg px-3 py-2 transition-colors leading-snug"
+                  className="w-full text-left text-sm bg-indigo-600/25 hover:bg-indigo-600/45 text-indigo-200 border border-indigo-600/40 px-3 py-2 transition-colors leading-snug"
+                  style={MONO}
                 >
                   <span className="font-semibold">Keep this</span>
                   <span className="text-indigo-400"> · remove &quot;{conflictPartner.title}&quot;</span>
                 </button>
                 <button
                   onClick={() => { onResolve(conflictPartner.id); onClose(); }}
-                  className="w-full text-left text-xs bg-gray-700/50 hover:bg-gray-700 text-gray-300 border border-gray-600/40 rounded-lg px-3 py-2 transition-colors leading-snug"
+                  className="w-full text-left text-sm bg-gray-700/50 hover:bg-gray-700 text-gray-300 border border-gray-600/40 px-3 py-2 transition-colors leading-snug"
+                  style={MONO}
                 >
                   <span className="font-semibold">Keep &quot;{conflictPartner.title}&quot;</span>
                   <span className="text-gray-500"> · remove this</span>
@@ -657,7 +674,7 @@ function TaskPopover({
           ) : (
             <div className="flex items-center gap-1.5 pt-1">
               <div className="w-1.5 h-1.5 rounded-full bg-green-500/70" />
-              <span className="text-[10px] text-gray-500">No conflicts with other events</span>
+              <span className="text-xs text-gray-500" style={MONO}>No conflicts with other events</span>
             </div>
           )}
 
@@ -666,7 +683,8 @@ function TaskPopover({
             {!editing ? (
               <button
                 onClick={() => setEditing(true)}
-                className="w-full text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 rounded-lg px-3 py-2 transition-colors text-left"
+                className="w-full text-sm text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 px-3 py-2 transition-colors text-left"
+                style={MONO}
               >
                 ✏ Edit name / time
               </button>
@@ -675,19 +693,22 @@ function TaskPopover({
                 <input
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full bg-gray-800 text-white text-xs rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                  className="w-full bg-gray-800 text-white text-sm px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                  style={MONO}
                   placeholder="Event name"
                 />
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <label className="block text-[10px] text-gray-500 mb-0.5">Start</label>
+                    <label className="block text-xs text-gray-500 mb-0.5" style={MONO}>Start</label>
                     <input type="time" value={editStart} onChange={(e) => setEditStart(e.target.value)}
-                      className="w-full bg-gray-800 text-white text-xs rounded-lg px-2 py-1.5 border border-gray-600 focus:border-indigo-500 focus:outline-none" />
+                      className="w-full bg-gray-800 text-white text-sm px-2 py-1.5 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                      style={MONO} />
                   </div>
                   <div className="flex-1">
-                    <label className="block text-[10px] text-gray-500 mb-0.5">End</label>
+                    <label className="block text-xs text-gray-500 mb-0.5" style={MONO}>End</label>
                     <input type="time" value={editEnd} onChange={(e) => setEditEnd(e.target.value)}
-                      className="w-full bg-gray-800 text-white text-xs rounded-lg px-2 py-1.5 border border-gray-600 focus:border-indigo-500 focus:outline-none" />
+                      className="w-full bg-gray-800 text-white text-sm px-2 py-1.5 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                      style={MONO} />
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -697,13 +718,15 @@ function TaskPopover({
                       setEditing(false);
                       onClose();
                     }}
-                    className="flex-1 py-1.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-medium transition-colors"
+                    className="flex-1 py-1.5 bg-indigo-600/80 hover:bg-indigo-600 text-white text-sm font-medium transition-colors"
+                    style={MONO}
                   >
                     Save
                   </button>
                   <button
                     onClick={() => setEditing(false)}
-                    className="flex-1 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs transition-colors"
+                    className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition-colors"
+                    style={MONO}
                   >
                     Cancel
                   </button>
@@ -717,13 +740,14 @@ function TaskPopover({
             {!confirmingDelete ? (
               <button
                 onClick={() => setConfirmingDelete(true)}
-                className="w-full text-xs text-red-400/70 hover:text-red-400 hover:bg-red-950/30 rounded-lg px-3 py-2 transition-colors text-left"
+                className="w-full text-sm text-red-400/70 hover:text-red-400 hover:bg-red-950/30 px-3 py-2 transition-colors text-left"
+                style={MONO}
               >
                 🗑 Remove event
               </button>
             ) : (
               <div>
-                <p className="text-xs text-gray-400 mb-2">
+                <p className="text-sm text-gray-400 mb-2" style={MONO}>
                   Remove this event from your calendar?
                 </p>
                 <div className="flex gap-2">
@@ -732,13 +756,15 @@ function TaskPopover({
                       onDelete();
                       onClose();
                     }}
-                    className="flex-1 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-xs font-medium transition-colors"
+                    className="flex-1 py-1.5 bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium transition-colors"
+                    style={MONO}
                   >
                     Yes, remove
                   </button>
                   <button
                     onClick={() => setConfirmingDelete(false)}
-                    className="flex-1 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs transition-colors"
+                    className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition-colors"
+                    style={MONO}
                   >
                     Cancel
                   </button>
@@ -842,8 +868,8 @@ export default function CalendarView() {
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">Weekly Plan</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
+          <h1 className="text-4xl font-bold text-white" style={DOT}>Weekly Plan</h1>
+          <p className="text-base text-gray-400 mt-0.5" style={MONO}>
             {weekRangeLabel(weekDates)}
           </p>
         </div>
@@ -853,7 +879,8 @@ export default function CalendarView() {
           <div className="flex items-center gap-2">
             {weekConflicts.length > 0 && (
               <span
-                className="text-xs bg-red-500/15 text-red-400 px-2.5 py-1 rounded-full border border-red-800/40 cursor-default"
+                className="text-xs bg-red-500/15 text-red-400 px-2.5 py-1 border border-red-800/40 cursor-default"
+                style={MONO}
                 title="Click any ⚠ event on the calendar to resolve"
               >
                 ⚠ {weekConflicts.length} conflict
@@ -861,11 +888,11 @@ export default function CalendarView() {
               </span>
             )}
             {unconfirmedCount > 0 && (
-              <span className="text-xs bg-yellow-500/10 text-yellow-400 px-2.5 py-1 rounded-full border border-yellow-700/40">
+              <span className="text-xs bg-yellow-500/10 text-yellow-400 px-2.5 py-1 border border-yellow-700/40" style={MONO}>
                 ◌ {unconfirmedCount} unconfirmed
               </span>
             )}
-            <span className="text-xs bg-gray-700/60 text-gray-400 px-2.5 py-1 rounded-full border border-gray-600/40">
+            <span className="text-xs bg-gray-700/60 text-gray-400 px-2.5 py-1 border border-gray-600/40" style={MONO}>
               {totalTasks} tasks
             </span>
           </div>
@@ -874,20 +901,23 @@ export default function CalendarView() {
           <div className="flex items-center gap-1">
             <button
               onClick={() => setWeekOffset((o) => o - 1)}
-              className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition-colors text-base"
+              className="w-8 h-8 flex items-center justify-center bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition-colors text-base"
+              style={DOT}
               title="Previous week"
             >
               ‹
             </button>
             <button
               onClick={() => setWeekOffset(0)}
-              className="px-3 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700 transition-colors text-xs font-medium"
+              className="px-3 h-8 bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700 transition-colors text-sm font-medium"
+              style={DOT}
             >
               Today
             </button>
             <button
               onClick={() => setWeekOffset((o) => o + 1)}
-              className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition-colors text-base"
+              className="w-8 h-8 flex items-center justify-center bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition-colors text-base"
+              style={DOT}
               title="Next week"
             >
               ›
@@ -899,7 +929,8 @@ export default function CalendarView() {
             onClick={() =>
               setAddModal({ date: weekDates[0], startTime: "09:00" })
             }
-            className="flex items-center gap-1.5 px-3 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors"
+            className="flex items-center gap-1.5 px-3 h-8 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
+            style={MONO}
           >
             <span className="text-base leading-none">+</span> Add Event
           </button>
@@ -908,7 +939,7 @@ export default function CalendarView() {
 
       {/* ── Calendar grid ────────────────────────────────────────────────────── */}
       <div
-        className="bg-gray-900 border border-gray-700 rounded-2xl overflow-hidden"
+        className="bg-gray-900 border border-gray-700 overflow-hidden"
         onClick={() => setSelectedTask(null)}
       >
         {/* Day header row */}
@@ -931,12 +962,12 @@ export default function CalendarView() {
                 key={date}
                 className="flex-1 text-center py-2.5 border-l border-gray-700/50"
               >
-                <p className="text-[10px] text-gray-500 uppercase tracking-widest">
+                <p className="text-xs text-gray-500 uppercase tracking-widest" style={MONO}>
                   {dayName}
                 </p>
                 <div className="flex items-center justify-center gap-1 mt-0.5">
                   <p
-                    className={`text-sm font-bold ${
+                    className={`text-base font-bold ${
                       isToday
                         ? "bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs"
                         : hasConflict
@@ -988,7 +1019,7 @@ export default function CalendarView() {
                       lineHeight: "16px",
                     }}
                   >
-                    <span className="text-[10px] text-gray-500 select-none">
+                    <span className="text-[10px] text-gray-500 select-none" style={MONO}>
                       {label}
                     </span>
                   </div>
@@ -1078,15 +1109,15 @@ export default function CalendarView() {
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
         <div className="flex items-center gap-1.5">
           <div className="w-5 h-3.5 rounded border border-dashed border-gray-400 bg-gray-700/20" />
-          <span className="text-xs text-gray-400">Unconfirmed</span>
+          <span className="text-sm text-gray-400" style={MONO}>Unconfirmed</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-5 h-3.5 rounded border border-gray-500 bg-gray-700/40" />
-          <span className="text-xs text-gray-400">Confirmed</span>
+          <span className="text-sm text-gray-400" style={MONO}>Confirmed</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-red-400 text-xs">⚠</span>
-          <span className="text-xs text-gray-400">
+          <span className="text-sm text-gray-400" style={MONO}>
             Conflict — click event to resolve
           </span>
         </div>
@@ -1104,7 +1135,7 @@ export default function CalendarView() {
               className="w-2.5 h-2.5 rounded-full shrink-0"
               style={{ backgroundColor: item.color }}
             />
-            <span className="text-xs text-gray-400">{item.label}</span>
+            <span className="text-sm text-gray-400" style={MONO}>{item.label}</span>
           </div>
         ))}
       </div>
@@ -1117,21 +1148,21 @@ export default function CalendarView() {
         });
         if (overflowTasks.length === 0) return null;
         return (
-          <div className="bg-gray-800/60 border border-yellow-700/40 rounded-2xl p-4">
+          <div className="bg-gray-800/60 border border-yellow-700/40 p-4">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-yellow-400 text-sm">⚠</span>
-              <h2 className="text-sm font-semibold text-yellow-300">Deferred — Day Overloaded</h2>
-              <span className="text-xs text-gray-500 ml-auto">{overflowTasks.length} task{overflowTasks.length !== 1 ? "s" : ""} didn&apos;t fit</span>
+              <h2 className="text-base font-semibold text-yellow-300 uppercase tracking-wider" style={MONO}>Deferred — Day Overloaded</h2>
+              <span className="text-sm text-gray-500 ml-auto" style={MONO}>{overflowTasks.length} task{overflowTasks.length !== 1 ? "s" : ""} didn&apos;t fit</span>
             </div>
             <div className="flex flex-col gap-2">
               {overflowTasks.map((t) => (
-                <div key={t.id} className="flex items-center gap-3 bg-gray-900/60 rounded-xl px-3 py-2 border border-gray-700/50">
+                <div key={t.id} className="flex items-center gap-3 bg-gray-900/60 px-3 py-2 border border-gray-700/50">
                   <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-white truncate">{t.title}</p>
-                    <p className="text-[10px] text-gray-500">{t.date} · {t.startTime}–{t.endTime}</p>
+                    <p className="text-sm font-medium text-white truncate" style={MONO}>{t.title}</p>
+                    <p className="text-[10px] text-gray-500" style={MONO}>{t.date} · {t.startTime}–{t.endTime}</p>
                   </div>
-                  <span className="text-[10px] text-yellow-600 border border-yellow-700/40 rounded px-1.5 py-0.5 shrink-0">overflow</span>
+                  <span className="text-[10px] text-yellow-600 border border-yellow-700/40 px-1.5 py-0.5 shrink-0" style={MONO}>overflow</span>
                 </div>
               ))}
             </div>

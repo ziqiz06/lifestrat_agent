@@ -19,6 +19,19 @@ body {
     }
 }
 
+/* Floating badge above sprite */
+@keyframes float-badge {
+    0%,
+    100% {
+        transform: translateY(0px);
+        opacity: 1;
+    }
+    50% {
+        transform: translateY(-5px);
+        opacity: 0.75;
+    }
+}
+
 /* Thinking pose — leaning left, slow contemplative bob */
 @keyframes think-bob {
     0%,
