@@ -4,6 +4,7 @@ import { useAppStore } from "@/store/appStore";
 import { CalendarTask, Conflict, RecurrenceRule, TaskType } from "@/types";
 import { scheduleBlockAppliesToDate } from "@/lib/dayPlanner";
 import { detectOverflow } from "@/lib/dayPlanner";
+import UndoToast from "@/components/ui/UndoToast";
 
 // ── Recurrence helpers ─────────────────────────────────────────────────────────
 
@@ -434,6 +435,7 @@ function AddEventModal({
   const [startTime, setStartTime] = useState(initial.startTime);
   const [endTime, setEndTime] = useState(() => addOneHour(initial.startTime));
   const [type, setType] = useState<TaskType>("other");
+  const [flex, setFlex] = useState<'fixed' | 'flexible'>('fixed');
   const [error, setError] = useState("");
   const [recurrence, setRecurrence] = useState<RecurrenceFormState>({
     frequency: 'none',
@@ -498,6 +500,7 @@ function AddEventModal({
       startTime,
       endTime,
       type,
+      flex,
       color: selectedType.color,
       confirmed: true,
       recurrence: recurrenceRule,
@@ -627,6 +630,28 @@ function AddEventModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
+          </div>
+
+          {/* Flex toggle */}
+          <div className="flex items-center justify-between py-1">
+            <div>
+              <span className="text-sm text-gray-400" style={MONO}>Flexible (AI can reschedule)</span>
+              <p className="text-xs text-gray-600 mt-0.5" style={MONO}>
+                {flex === 'flexible' ? 'AI planner may move this to a better slot' : 'Stays at the time you set'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFlex(f => f === 'fixed' ? 'flexible' : 'fixed')}
+              className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${
+                flex === 'flexible' ? 'bg-indigo-600' : 'bg-gray-600'
+              }`}
+              style={MONO}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                flex === 'flexible' ? 'translate-x-5' : 'translate-x-0.5'
+              }`} />
+            </button>
           </div>
 
           {/* Recurrence */}
@@ -1189,6 +1214,9 @@ export default function CalendarView() {
     aiPlanCalendar,
     aiPlanLoading,
     aiPlanSummary,
+    lastCalendarUndo,
+    undoLastCalendarAction,
+    clearCalendarUndo,
   } = useAppStore();
 
   const [weekOffset, setWeekOffset] = useState(0);
@@ -1709,6 +1737,15 @@ export default function CalendarView() {
           initial={addModal}
           onClose={() => setAddModal(null)}
           onAdd={(task) => addCustomCalendarTask(task)}
+        />
+      )}
+
+      {/* ── Undo toast ──────────────────────────────────────────────────────── */}
+      {lastCalendarUndo && (
+        <UndoToast
+          label={lastCalendarUndo.label}
+          onUndo={() => undoLastCalendarAction()}
+          onDismiss={() => clearCalendarUndo()}
         />
       )}
     </div>

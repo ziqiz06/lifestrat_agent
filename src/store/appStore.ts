@@ -17,7 +17,7 @@ import {
   seedHistory,
   DEFAULT_APPEARANCE,
 } from "@/lib/characterEngine";
-import { realEmails } from "@/data/realEmails";
+// realEmails removed — every user imports their own Gmail inbox
 // mockCalendarTasks intentionally removed — calendar starts empty
 import { rankOpportunities } from "@/lib/opportunityRanking";
 import { detectConflicts } from "@/lib/conflictDetection";
@@ -121,6 +121,10 @@ interface AppStore extends AppState {
   acceptConflict: (taskId: string) => void;
   /** Undo a previously accepted conflict override — re-evaluates conflicts. */
   undoConflictOverride: (taskId: string) => void;
+  /** Undo the last add-opportunity or resolve-conflict action. */
+  undoLastCalendarAction: () => void;
+  /** Dismiss the undo toast without undoing. */
+  clearCalendarUndo: () => void;
   /** Mark a past confirmed task as completed — awards XP. */
   markTaskCompleted: (taskId: string) => void;
   /** Mark a past confirmed task as missed — no XP. */
@@ -137,17 +141,16 @@ interface AppStore extends AppState {
   reloadOpportunities: () => void;
   /** Re-rank opportunities using current profile (alias for reloadOpportunities). */
   rerankOpportunities: () => void;
+  /** Replace the email corpus with Gmail-imported emails and re-derive opportunities. */
+  setEmails: (emails: import('@/types').MockEmail[]) => void;
 }
 
 export const useAppStore = create<AppStore>()(
   persist(
     (set, get) => ({
       profile: DEFAULT_PROFILE,
-      emails: realEmails,
-      opportunities: rankOpportunities(
-        deriveOpportunitiesFromEmails(realEmails),
-        DEFAULT_PROFILE,
-      ),
+      emails: [],
+      opportunities: [],
       calendarTasks: [],
       conflicts: [],
       goals: DEFAULT_GOALS,
@@ -161,6 +164,8 @@ export const useAppStore = create<AppStore>()(
       aiPlanLoading: false,
       aiPlanSummary: "",
       rerankLoading: false,
+      lastCalendarUndo: null,
+      gmailConnected: false,
 
       setActiveTab: (tab) => set({ activeTab: tab }),
 
@@ -482,6 +487,12 @@ Format your response as:
         set((state) => ({
           calendarTasks: newTasks,
           conflicts,
+          lastCalendarUndo: {
+            type: 'add_opportunity',
+            label: `Added "${newTask.title}" to calendar`,
+            addedTaskId: newTask.id,
+            opportunityId,
+          },
           opportunities: state.opportunities.map((o) =>
             o.id === opportunityId ? { ...o, addedToCalendar: true } : o
           ),
@@ -540,10 +551,18 @@ Format your response as:
         const removeTaskId =
           keepTaskId === conflict.taskAId ? conflict.taskBId : conflict.taskAId;
         const removedTask = get().calendarTasks.find((t) => t.id === removeTaskId);
+        const keptTask = get().calendarTasks.find((t) => t.id === keepTaskId);
         const newTasks = get().calendarTasks.filter((t) => t.id !== removeTaskId);
         set((state) => ({
           calendarTasks: newTasks,
           conflicts: detectConflicts(newTasks, get().profile),
+          lastCalendarUndo: removedTask ? {
+            type: 'resolve_conflict',
+            label: `Kept "${keptTask?.title ?? 'event'}" over "${removedTask.title}"`,
+            removedTask,
+            opportunityId: removedTask.opportunityId,
+            removedConflict: conflict,
+          } : null,
           // If removed task was linked to an opportunity, clear its addedToCalendar flag
           opportunities: removedTask?.opportunityId
             ? state.opportunities.map((o) =>
@@ -579,6 +598,49 @@ Format your response as:
           conflicts: detectConflicts(newTasks, get().profile),
         });
       },
+
+      undoLastCalendarAction: () => {
+        const entry = get().lastCalendarUndo;
+        if (!entry) return;
+
+        if (entry.type === 'add_opportunity') {
+          // Remove the task that was added and reset the opportunity
+          const newTasks = get().calendarTasks.filter((t) => t.id !== entry.addedTaskId);
+          set((state) => ({
+            calendarTasks: newTasks,
+            conflicts: detectConflicts(newTasks, state.profile),
+            lastCalendarUndo: null,
+            opportunities: entry.opportunityId
+              ? state.opportunities.map((o) =>
+                  o.id === entry.opportunityId
+                    ? { ...o, addedToCalendar: false, interested: null }
+                    : o,
+                )
+              : state.opportunities,
+          }));
+        } else if (entry.type === 'resolve_conflict') {
+          // Restore the removed task and its conflict record
+          if (!entry.removedTask) { set({ lastCalendarUndo: null }); return; }
+          const newTasks = [...get().calendarTasks, entry.removedTask];
+          const newConflicts = entry.removedConflict
+            ? [...detectConflicts(newTasks, get().profile)]
+            : detectConflicts(newTasks, get().profile);
+          set((state) => ({
+            calendarTasks: newTasks,
+            conflicts: newConflicts,
+            lastCalendarUndo: null,
+            opportunities: entry.opportunityId
+              ? state.opportunities.map((o) =>
+                  o.id === entry.opportunityId
+                    ? { ...o, addedToCalendar: true }
+                    : o,
+                )
+              : state.opportunities,
+          }));
+        }
+      },
+
+      clearCalendarUndo: () => set({ lastCalendarUndo: null }),
 
       markTaskCompleted: (taskId) => {
         const task = get().calendarTasks.find((t) => t.id === taskId);
@@ -967,11 +1029,15 @@ HARD RULE: Never mix modes in a single response. Pick one and follow it complete
             }
 
             // 3. Overlap with blocked intervals (sleep, meals, schedule blocks)
-            const blocked = getBlockedIntervalsForDay(profile, t.date);
-            for (const b of blocked) {
-              if (b.start < taskEndM && b.end > taskStartM) {
-                violations.push(`in_blocked_time "${b.label}" (${minutesToTime(b.start)}–${minutesToTime(b.end)})`);
-                break; // one blocked-time violation per task is enough
+            // Skip if the user already explicitly accepted this conflict.
+            const userAccepted = t.conflictOverride === true || t.status === 'confirmed_with_override';
+            if (!userAccepted) {
+              const blocked = getBlockedIntervalsForDay(profile, t.date);
+              for (const b of blocked) {
+                if (b.start < taskEndM && b.end > taskStartM) {
+                  violations.push(`in_blocked_time "${b.label}" (${minutesToTime(b.start)}–${minutesToTime(b.end)})`);
+                  break; // one blocked-time violation per task is enough
+                }
               }
             }
 
@@ -1116,6 +1182,19 @@ Return ONLY the JSON object — no markdown, no explanation.`;
 
       rerankOpportunities: () => get().reloadOpportunities(),
 
+      setEmails: (emails) => {
+        const profile = get().profile;
+        const existing = get().opportunities;
+        const fresh = rankOpportunities(deriveOpportunitiesFromEmails(emails), profile);
+        // Preserve user decisions on any opportunity that survived
+        const existingMap = new Map(existing.map((o) => [o.id, o]));
+        const merged = fresh.map((opp) => {
+          const prev = existingMap.get(opp.id);
+          return prev ? { ...opp, interested: prev.interested, addedToCalendar: prev.addedToCalendar } : opp;
+        });
+        set({ emails, opportunities: merged, gmailConnected: true });
+      },
+
       reloadOpportunities: () => {
         const { emails, profile, opportunities: existing } = get();
         const fresh = rankOpportunities(deriveOpportunitiesFromEmails(emails), profile);
@@ -1188,10 +1267,10 @@ Return ONLY the JSON object — no markdown, no explanation.`;
           goals: DEFAULT_GOALS,
           calendarTasks: [],
           conflicts: [],
-          opportunities: rankOpportunities(
-            deriveOpportunitiesFromEmails(realEmails),
-            DEFAULT_PROFILE,
-          ),
+          emails: [],
+          opportunities: [],
+          gmailConnected: false,
+          lastCalendarUndo: null,
           onboardingComplete: false,
           aiInsight: "",
           aiInsightLoading: false,
@@ -1212,6 +1291,7 @@ Return ONLY the JSON object — no markdown, no explanation.`;
           aiInsightLoading,
           dailyStrategy,
           chatMessages,
+          lastCalendarUndo,
           ...persisted
         } = state;
         void emails;
@@ -1220,6 +1300,7 @@ Return ONLY the JSON object — no markdown, no explanation.`;
         void aiInsightLoading;
         void dailyStrategy;
         void chatMessages;
+        void lastCalendarUndo;
         return persisted;
       },
       // Merge stored profile with DEFAULT_PROFILE so new fields always have values

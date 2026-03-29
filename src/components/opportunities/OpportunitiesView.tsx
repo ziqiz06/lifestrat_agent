@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { RankingDebug } from "@/types";
 import { useAppStore } from "@/store/appStore";
 import { Opportunity } from "@/types";
@@ -7,6 +7,7 @@ import { isOpportunityExpired } from "@/lib/timeParser";
 import { computeProposedSlot, timeToMinutes } from "@/lib/dayPlanner";
 import PixelSprite from "@/components/character/PixelSprite";
 import { getArchetypePalette } from "@/lib/characterEngine";
+import UndoToast from "@/components/ui/UndoToast";
 
 const DOT  = { fontFamily: "var(--font-dot)"  } as const;
 const MONO = { fontFamily: "var(--font-mono)" } as const;
@@ -579,9 +580,96 @@ function ExpiredCard({ opp }: { opp: Opportunity }) {
 // ── Main view ─────────────────────────────────────────────────────────────────
 
 export default function OpportunitiesView() {
-  const { opportunities, emails, character, rerankWithK2, rerankLoading, reloadOpportunities } = useAppStore();
-  const [showDebug, setShowDebug] = useState(false);
-  const [showExpired, setShowExpired] = useState(false);
+  const {
+    opportunities, emails, character,
+    rerankWithK2, rerankLoading, reloadOpportunities,
+    lastCalendarUndo, undoLastCalendarAction, clearCalendarUndo,
+    gmailConnected, setEmails,
+  } = useAppStore();
+
+  const [showDebug, setShowDebug]       = useState(false);
+  const [showExpired, setShowExpired]   = useState(false);
+  const [importing, setImporting]       = useState(false);
+  const [importError, setImportError]   = useState<string | null>(null);
+  const [importStep, setImportStep]     = useState<string>("");
+
+  // Called from page.tsx via a custom event after Gmail OAuth completes
+  const runGmailImport = useCallback(async (providerToken: string, userId: string) => {
+    setImporting(true);
+    setImportError(null);
+    try {
+      // Step 1 — fetch raw emails from Gmail API
+      setImportStep("Fetching emails from Gmail…");
+      const fetchRes = await fetch("/api/gmail/fetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: providerToken }),
+      });
+      if (!fetchRes.ok) throw new Error("Failed to fetch Gmail messages");
+      const { emails: rawEmails } = await fetchRes.json() as {
+        emails: Array<{ id: string; from: string; subject: string; body: string; date: string }>;
+      };
+
+      // Step 2 — categorise with AI
+      setImportStep(`Categorising ${rawEmails.length} emails…`);
+      const catRes = await fetch("/api/gmail/categorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails: rawEmails }),
+      });
+      const { categories } = catRes.ok
+        ? await catRes.json() as { categories: Array<{ id: string; category: import("@/types").EmailCategory }> }
+        : { categories: [] };
+
+      const catMap = new Map(categories.map((c) => [c.id, c.category]));
+
+      // Step 3 — assemble MockEmail array
+      const mockEmails: import("@/types").MockEmail[] = rawEmails.map((e) => ({
+        id: e.id,
+        from: e.from,
+        subject: e.subject,
+        body: e.body,
+        date: e.date,
+        category: catMap.get(e.id) ?? "ignore",
+      }));
+
+      // Step 4 — update store (re-derives opportunities automatically)
+      setEmails(mockEmails);
+
+      // Step 5 — persist to Supabase
+      setImportStep("Saving…");
+      const { saveUserEmails } = await import("@/lib/supabaseSync");
+      await saveUserEmails(userId, mockEmails).catch(() => {});
+
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setImporting(false);
+      setImportStep("");
+    }
+  }, [setEmails]);
+
+  // Listen for the custom event dispatched by page.tsx after OAuth callback
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { providerToken, userId } = (e as CustomEvent<{ providerToken: string; userId: string }>).detail;
+      runGmailImport(providerToken, userId);
+    };
+    window.addEventListener("gmail:connected", handler);
+    return () => window.removeEventListener("gmail:connected", handler);
+  }, [runGmailImport]);
+
+  const handleConnectGmail = async () => {
+    const { createClient } = await import("@/utils/supabase/client");
+    const supabase = createClient();
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        scopes: "https://www.googleapis.com/auth/gmail.readonly email profile",
+        redirectTo: `${window.location.origin}/auth/callback?next=/?gmail=connected`,
+      },
+    });
+  };
 
   const visible = opportunities.filter((o) => o.category !== "ignore");
 
@@ -604,6 +692,48 @@ export default function OpportunitiesView() {
   const archetype = character?.archetype ?? "The Sage";
   const palette   = getArchetypePalette(archetype);
   const accent    = palette.glow;
+
+  // ── Gmail not connected: show connect screen ────────────────────────────────
+  if (!gmailConnected) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-[60vh] gap-8">
+        <div className="text-center space-y-3">
+          <p className="text-6xl">📬</p>
+          <h1 className="text-4xl font-bold text-white" style={DOT}>Connect Gmail</h1>
+          <p className="text-gray-400 text-sm max-w-sm" style={MONO}>
+            Link your Gmail account so LifeStrat can import your emails and surface real opportunities — internships, events, deadlines, and more.
+          </p>
+        </div>
+
+        {importing ? (
+          <div className="text-center space-y-3">
+            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-gray-400 text-sm" style={MONO}>{importStep || "Importing…"}</p>
+          </div>
+        ) : (
+          <button
+            onClick={handleConnectGmail}
+            className="flex items-center gap-3 px-6 py-3 bg-white hover:bg-gray-100 text-gray-900 font-medium text-sm transition-colors"
+            style={MONO}
+          >
+            <svg width="20" height="20" viewBox="0 0 18 18" fill="none">
+              <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+              <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+              <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/>
+              <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+            </svg>
+            Connect Gmail Account
+          </button>
+        )}
+
+        {importError && (
+          <p className="text-red-400 text-xs border border-red-800/40 bg-red-950/20 px-4 py-2" style={MONO}>
+            {importError}
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -735,6 +865,14 @@ export default function OpportunitiesView() {
             </div>
           )}
         </section>
+      )}
+
+      {lastCalendarUndo && (
+        <UndoToast
+          label={lastCalendarUndo.label}
+          onUndo={() => undoLastCalendarAction()}
+          onDismiss={() => clearCalendarUndo()}
+        />
       )}
     </div>
   );

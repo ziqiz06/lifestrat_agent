@@ -21,6 +21,7 @@ import {
   saveCalendarTasks,
   loadGoals,
   saveGoals,
+  loadUserEmails,
 } from "@/lib/supabaseSync";
 import { mockCalendarTasks } from "@/data/mockCalendar";
 import { detectConflicts } from "@/lib/conflictDetection";
@@ -39,6 +40,7 @@ export default function Home() {
     goals,
     setGoals,
     resetStore,
+    setEmails,
   } = useAppStore();
 
   const [phase, setPhase] = useState<AppPhase>("loading");
@@ -65,6 +67,17 @@ export default function Home() {
 
         setUserId(session.user.id);
         setUserEmail(session.user.email ?? null);
+
+        // After Gmail OAuth callback, dispatch event so OpportunitiesView can import
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("gmail") === "connected" && session.provider_token) {
+          window.history.replaceState({}, "", "/");
+          window.dispatchEvent(
+            new CustomEvent("gmail:connected", {
+              detail: { providerToken: session.provider_token, userId: session.user.id },
+            }),
+          );
+        }
 
         // Transition immediately based on local cache, then sync from Supabase
         const localState = useAppStore.getState();
@@ -115,11 +128,20 @@ export default function Home() {
       completeOnboarding(savedProfile);
 
       // Load ALL data before transitioning — prevents auto-save overwriting restored state
-      const [decisions, calendarData, savedGoals] = await Promise.all([
+      const [decisions, calendarData, savedGoals, savedEmails] = await Promise.all([
         loadOpportunityDecisions(uid),
         loadCalendarTasks(uid),
         loadGoals(uid),
+        loadUserEmails(uid),
       ]);
+
+      // Restore Gmail-imported emails if present, otherwise reset gmailConnected
+      // (prevents one user's localStorage flag from bleeding into another user's session)
+      if (savedEmails?.length) {
+        setEmails(savedEmails);
+      } else {
+        useAppStore.setState({ gmailConnected: false, emails: [], opportunities: [] });
+      }
 
       // Apply everything at once
       useAppStore.setState((state) => {
@@ -176,8 +198,8 @@ export default function Home() {
   const handleSignOut = async () => {
     setUserId(null);
     setUserEmail(null);
-    resetStore(); // clear Zustand state
-    localStorage.removeItem("lifestrat-app-state"); // clear persisted cache
+    resetStore();
+    localStorage.removeItem("lifestrat-app-state"); // wipe all persisted state including gmailConnected
     await supabase.auth.signOut();
     setPhase("signedout");
   };

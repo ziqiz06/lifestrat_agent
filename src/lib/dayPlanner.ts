@@ -12,7 +12,11 @@ const FIXED_TYPES = new Set([
 ]);
 
 export function isFixed(task: CalendarTask): boolean {
-  return task.flex === 'fixed' || FIXED_TYPES.has(task.type);
+  // Explicit flex field takes priority over type heuristic.
+  if (task.flex === 'fixed') return true;
+  if (task.flex === 'flexible') return false;
+  // No flex field — fall back to type-based heuristic.
+  return FIXED_TYPES.has(task.type);
 }
 
 export function timeToMinutes(t: string): number {

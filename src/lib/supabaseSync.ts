@@ -1,5 +1,5 @@
 import { createClient } from '@/utils/supabase/client';
-import { UserProfile, Opportunity, CalendarTask, Goal } from '@/types';
+import { UserProfile, Opportunity, CalendarTask, Goal, MockEmail } from '@/types';
 
 // Save the user's onboarding profile
 export async function saveProfile(userId: string, profile: UserProfile) {
@@ -137,4 +137,25 @@ export async function loadGoals(userId: string): Promise<Goal[] | null> {
     .eq('user_id', userId)
     .single();
   return data?.goals ?? null;
+}
+
+// Save Gmail-imported emails
+export async function saveUserEmails(userId: string, emails: MockEmail[]): Promise<void> {
+  const supabase = createClient();
+  await supabase.from('user_emails').upsert({
+    user_id: userId,
+    emails,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id' });
+}
+
+// Load Gmail-imported emails (null = never imported)
+export async function loadUserEmails(userId: string): Promise<MockEmail[] | null> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from('user_emails')
+    .select('emails')
+    .eq('user_id', userId)
+    .single();
+  return data?.emails ?? null;
 }

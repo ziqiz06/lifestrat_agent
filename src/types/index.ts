@@ -242,6 +242,15 @@ export interface Goal {
   addedToPlan: boolean;
 }
 
+export interface CalendarUndoEntry {
+  type: 'add_opportunity' | 'resolve_conflict';
+  label: string;            // human-readable description for the toast
+  addedTaskId?: string;     // add_opportunity: the task id to remove on undo
+  removedTask?: CalendarTask;  // resolve_conflict: the task to restore on undo
+  opportunityId?: string;   // reset addedToCalendar / interested on undo
+  removedConflict?: Conflict;  // resolve_conflict: conflict to restore
+}
+
 export interface AppState {
   profile: UserProfile;
   emails: MockEmail[];
@@ -262,6 +271,10 @@ export interface AppState {
   aiInsightLoading: boolean;
   dailyStrategy: DailyStrategy | null;
   chatMessages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  // Undo for calendar actions (not persisted — session only)
+  lastCalendarUndo: CalendarUndoEntry | null;
+  // Gmail integration
+  gmailConnected: boolean;
 }
 
 export interface StrategyAction {
