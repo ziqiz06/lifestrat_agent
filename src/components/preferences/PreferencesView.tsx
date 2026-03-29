@@ -89,7 +89,7 @@ const handleSave = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-5xl font-bold text-white" style={DOT}>Preferences</h1>
@@ -192,10 +192,10 @@ const handleSave = () => {
           </label>
           <button
             onClick={() => update("activelyLooking", !form.activelyLooking)}
-            className={`w-10 h-5 rounded-full transition-colors ${form.activelyLooking ? "bg-indigo-600" : "bg-gray-600"}`}
+            className={`w-10 h-5 transition-colors ${form.activelyLooking ? "bg-indigo-600" : "bg-gray-600"}`}
           >
             <div
-              className={`w-4 h-4 bg-white rounded-full shadow transition-transform m-0.5 ${form.activelyLooking ? "translate-x-5" : "translate-x-0"}`}
+              className={`w-4 h-4 bg-white shadow transition-transform m-0.5 ${form.activelyLooking ? "translate-x-5" : "translate-x-0"}`}
             />
           </button>
         </div>
@@ -222,7 +222,7 @@ const handleSave = () => {
         </div>
 
         {/* Breakfast */}
-        <div className="border border-gray-600/60 p-4 space-y-3">
+        <div className="border border-gray-700 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium text-gray-300" style={MONO}>Breakfast</label>
             <button
@@ -260,7 +260,7 @@ const handleSave = () => {
         </div>
 
         {/* Lunch */}
-        <div className="border border-gray-600/60 p-4 space-y-3">
+        <div className="border border-gray-700 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium text-gray-300" style={MONO}>Lunch</label>
             <button
@@ -298,7 +298,7 @@ const handleSave = () => {
         </div>
 
         {/* Dinner */}
-        <div className="border border-gray-600/60 p-4 space-y-3">
+        <div className="border border-gray-700 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium text-gray-300" style={MONO}>Dinner</label>
             <button
@@ -435,7 +435,7 @@ const handleSave = () => {
         )}
 
         {/* Add new block form */}
-        <div className="border border-gray-600/60 p-4 space-y-3">
+        <div className="border border-gray-700 p-4 space-y-3">
           <p className="text-base font-medium text-gray-300" style={MONO}>Add blocked time</p>
 
           <input

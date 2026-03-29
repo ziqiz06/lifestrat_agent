@@ -32,8 +32,8 @@ function RadarChart({
   stats: CharacterStats;
   palette: ArchetypePalette;
 }) {
-  const CX = 120,
-    CY = 125,
+  const CX = 145,
+    CY = 145,
     R = 95;
   const keys: (keyof CharacterStats)[] = [
     "focus",
@@ -51,7 +51,7 @@ function RadarChart({
     .join(" ");
 
   return (
-    <svg viewBox="0 0 250 265" className="w-full max-w-64 mx-auto">
+    <svg viewBox="0 0 290 285" className="w-full max-w-[290px] mx-auto">
       {/* Grid polygons */}
       {[0.25, 0.5, 0.75, 1].map((lvl) => (
         <polygon
@@ -98,14 +98,14 @@ function RadarChart({
       ))}
       {/* Labels */}
       {keys.map((k, i) => {
-        const lr = R + 22;
+        const lr = R + 30;
         return (
           <g key={k}>
             <text
               x={px(i, lr)}
               y={py(i, lr) - 3}
               textAnchor="middle"
-              fontSize={9}
+              fontSize={12}
               fill={STAT_META[k].color}
               fontWeight="600"
             >
@@ -115,8 +115,8 @@ function RadarChart({
               x={px(i, lr)}
               y={py(i, lr) + 7}
               textAnchor="middle"
-              fontSize={8}
-              fill="#9CA3AF"
+              fontSize={11}
+              fill="#E5E7EB"
             >
               {stats[k]}
             </text>
@@ -335,7 +335,7 @@ function OptionRow<T extends string>({
             type="button"
             onClick={() => onChange(opt.value)}
             title={opt.desc}
-            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl border text-xs transition-all ${
+            className={`flex flex-col items-center gap-0.5 px-3 py-2 border text-xs transition-all ${
               value === opt.value
                 ? "border-indigo-500 bg-indigo-600/25 text-white"
                 : "border-gray-700 bg-gray-800/60 text-gray-400 hover:border-gray-500 hover:text-gray-200"
@@ -444,7 +444,7 @@ function CharacterSetup() {
               type="text"
               maxLength={24}
               style={MONO}
-              className="w-full bg-gray-700 text-white rounded-xl px-4 py-3 border border-gray-600 focus:border-indigo-500 focus:outline-none placeholder-gray-500 text-sm"
+              className="w-full bg-gray-700 text-white px-4 py-3 border border-gray-600 focus:border-indigo-500 focus:outline-none placeholder-gray-500 text-sm"
               placeholder="e.g. Aelith, Nova, Kiran…"
               value={name}
               onChange={(e) => {
@@ -586,9 +586,9 @@ export default function CharacterView() {
                   {lvlProgress.current} / {lvlProgress.needed} xp
                 </span>
               </div>
-              <div className="h-2 bg-gray-800 rounded-full overflow-hidden border border-gray-700/50">
+              <div className="h-2 bg-gray-800 overflow-hidden border border-gray-700/50">
                 <div
-                  className="h-full rounded-full transition-all duration-700"
+                  className="h-full transition-all duration-700"
                   style={{
                     width: `${lvlProgress.pct}%`,
                     background: `linear-gradient(90deg, ${palette.glow}88, ${palette.glow})`,
@@ -605,7 +605,7 @@ export default function CharacterView() {
                 return (
                   <div
                     key={signal}
-                    className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full border font-medium"
+                    className="flex items-center gap-1.5 text-sm px-3 py-1.5 border font-medium"
                     style={{
                       ...MONO,
                       color: m.color,
@@ -627,7 +627,7 @@ export default function CharacterView() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* ── Stats ──────────────────────────────────────────────────────── */}
-        <section className="bg-gray-800/80 p-5 border border-gray-700 space-y-4">
+        <section className="bg-gray-800/80 p-5 space-y-4" style={{ border: `1px solid ${palette.glow}55` }}>
           <div className="flex items-center justify-between">
             <h2 style={MONO} className="text-lg font-bold uppercase tracking-wider text-white">Core Stats</h2>
             <span style={MONO} className="text-xs text-gray-500">
@@ -683,7 +683,7 @@ export default function CharacterView() {
         {/* ── Signals + Suggestions ──────────────────────────────────────── */}
         <div className="space-y-5">
           {/* Signals detail */}
-          <section className="bg-gray-800/80 p-5 border border-gray-700">
+          <section className="bg-gray-800/80 p-5" style={{ border: `1px solid ${palette.glow}55` }}>
             <h2 style={MONO} className="text-lg font-bold uppercase tracking-wider text-white mb-4">
               What {character.name} is experiencing
             </h2>
@@ -714,7 +714,7 @@ export default function CharacterView() {
           </section>
 
           {/* Suggestions */}
-          <section className="bg-gray-800/80 p-5 border border-gray-700">
+          <section className="bg-gray-800/80 p-5" style={{ border: `1px solid ${palette.glow}55` }}>
             <h2 style={MONO} className="text-lg font-bold uppercase tracking-wider text-white mb-1">
               Character Insights
             </h2>
@@ -735,7 +735,7 @@ export default function CharacterView() {
           </section>
 
           {/* ── Appearance editor ────────────────────────────────────────── */}
-          <section className="bg-gray-800/80 p-5 border border-gray-700">
+          <section className="bg-gray-800/80 p-5" style={{ border: `1px solid ${palette.glow}55` }}>
             <div className="flex items-center justify-between mb-1">
               <h2 style={MONO} className="text-lg font-bold uppercase tracking-wider text-white">Appearance</h2>
               <button
@@ -854,7 +854,7 @@ export default function CharacterView() {
       </div>
 
       {/* ── Trend graph ────────────────────────────────────────────────────── */}
-      <section className="bg-gray-800/80 p-5 border border-gray-700">
+      <section className="bg-gray-800/80 p-5" style={{ border: `1px solid ${palette.glow}55` }}>
         <div className="flex items-center justify-between mb-4">
           <h2 style={MONO} className="text-lg font-bold uppercase tracking-wider text-white">Stat Trends</h2>
           <span style={MONO} className="text-xs text-gray-500">
@@ -865,7 +865,7 @@ export default function CharacterView() {
       </section>
 
       {/* ── Activity Breakdown ────────────────────────────────────────── */}
-      <section className="border border-gray-700 p-5 space-y-4">
+      <section className="p-5 space-y-4" style={{ border: `1px solid ${palette.glow}55` }}>
         <h2 style={MONO} className="text-lg font-bold uppercase tracking-wider text-white">
           Activity Breakdown
         </h2>
@@ -876,7 +876,7 @@ export default function CharacterView() {
             const tier = val >= 70 ? "PEAK" : val >= 50 ? "ACTIVE" : val >= 35 ? "STEADY" : "QUIET";
             const tierColor = val >= 70 ? "#22C55E" : val >= 50 ? palette.glow : val >= 35 ? "#9CA3AF" : "#4B5563";
             return (
-              <div key={key} className="flex flex-col items-center gap-1.5 p-3 border border-gray-700/60 bg-gray-800/40">
+              <div key={key} className="flex flex-col items-center gap-1.5 p-3 bg-gray-800/40" style={{ border: `1px solid ${palette.glow}30` }}>
                 <span className="text-3xl">{meta.icon}</span>
                 <span style={MONO} className="text-sm uppercase tracking-wide text-gray-400">{meta.label}</span>
                 <span style={MONO} className="text-3xl font-bold text-white tabular-nums">{val}</span>
@@ -888,7 +888,7 @@ export default function CharacterView() {
       </section>
 
       {/* ── About ──────────────────────────────────────────────────────────── */}
-      <div className="p-5 border border-gray-700/50 bg-gray-800/40">
+      <div className="p-5 bg-gray-800/40" style={{ border: `1px solid ${palette.glow}40` }}>
         <h2 style={DOT} className="font-semibold text-gray-300 mb-2 text-lg">
           How this works
         </h2>

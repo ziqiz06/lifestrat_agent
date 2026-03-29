@@ -108,28 +108,23 @@ const CATEGORY_LABELS: Record<string, string> = {
   ignore: "Ignore",
 };
 
-const CATEGORY_COLORS: Record<string, string> = {
-  internship_application: "bg-green-900/50 text-green-300 border-green-800",
-  internship_research: "bg-blue-900/50 text-blue-300 border-blue-800",
-  professional_event: "bg-purple-900/50 text-purple-300 border-purple-800",
-  networking: "bg-pink-900/50 text-pink-300 border-pink-800",
-  classes: "bg-indigo-900/50 text-indigo-300 border-indigo-800",
-  deadline: "bg-red-900/50 text-red-300 border-red-800",
-  entertainment: "bg-yellow-900/50 text-yellow-300 border-yellow-800",
-  personal: "bg-gray-700 text-gray-300 border-gray-600",
-  ignore: "bg-gray-800 text-gray-500 border-gray-700",
+const CATEGORY_COLOR: Record<string, string> = {
+  internship_application: "#22C55E",
+  internship_research:    "#3B82F6",
+  professional_event:     "#A855F7",
+  networking:             "#EC4899",
+  classes:                "#6366F1",
+  deadline:               "#EF4444",
+  entertainment:          "#EAB308",
+  personal:               "#9CA3AF",
+  ignore:                 "#374151",
 };
 
+
 function PriorityBadge({ priority }: { priority: number }) {
-  const color =
-    priority >= 9
-      ? "bg-red-500"
-      : priority >= 7
-        ? "bg-yellow-500"
-        : "bg-green-500";
   return (
     <div
-      className={`${color} text-white text-sm font-bold w-8 h-8 flex items-center justify-center shrink-0`}
+      className="text-sm font-bold w-8 h-8 flex items-center justify-center shrink-0 border border-gray-700 text-gray-400"
       style={MONO}
     >
       {priority}
@@ -137,9 +132,10 @@ function PriorityBadge({ priority }: { priority: number }) {
   );
 }
 
-function OpportunityCard({ opp }: { opp: Opportunity }) {
+function OpportunityCard({ opp, accent }: { opp: Opportunity; accent: string }) {
   const { setOpportunityInterest, addOpportunityToCalendar, deleteCalendarTask } = useAppStore();
   const [showModal, setShowModal] = useState(false);
+  const catColor = CATEGORY_COLOR[opp.category] ?? "#374151";
 
   const handleAddToSchedule = () => {
     setOpportunityInterest(opp.id, true);
@@ -150,6 +146,12 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
       setShowModal(true);
     }
   };
+
+  const borderStyle: React.CSSProperties = opp.interested === false
+    ? { border: `1px solid #37415155` }
+    : opp.addedToCalendar
+      ? { border: `1px solid ${catColor}80` }
+      : { border: `1px solid ${catColor}45` };
 
   return (
     <>
@@ -164,41 +166,36 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
         />
       )}
       <div
-        className={`bg-gray-800 p-5 border transition-all ${
-          opp.addedToCalendar
-            ? "border-green-700/50"
-            : opp.interested === false
-              ? "border-gray-700 opacity-60"
-              : "border-gray-700 hover:border-gray-600"
-        }`}
+        className={`bg-gray-900 p-5 transition-all ${opp.interested === false ? "opacity-50" : ""}`}
+        style={borderStyle}
       >
         <div className="flex items-start gap-3 mb-3">
           <PriorityBadge priority={opp.priority} />
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-white text-base mb-0.5" style={MONO}>{opp.title}</h3>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`text-sm px-2 py-0.5 border ${CATEGORY_COLORS[opp.category]}`} style={MONO}>
+              <span className="text-sm px-2 py-0.5 border border-gray-700 text-gray-500" style={MONO}>
                 {CATEGORY_LABELS[opp.category]}
               </span>
               {opp.deadline && (
-                <span className="text-sm text-gray-500" style={MONO}>📅 Due {opp.deadline}</span>
+                <span className="text-sm text-gray-500" style={MONO}>Due {opp.deadline}</span>
               )}
               {opp.eventTime && (
-                <span className="text-sm text-indigo-400" style={MONO}>🕐 {opp.eventTime}{opp.eventEndTime ? `–${opp.eventEndTime}` : ""}</span>
+                <span className="text-sm text-gray-500" style={MONO}>{opp.eventTime}{opp.eventEndTime ? `–${opp.eventEndTime}` : ""}</span>
               )}
-              <span className="text-sm text-gray-500" style={MONO}>⏱ ~{opp.estimatedHours}h</span>
+              <span className="text-sm text-gray-500" style={MONO}>~{opp.estimatedHours}h</span>
             </div>
           </div>
         </div>
 
         <p className="text-base text-gray-400 mb-2" style={MONO}>{opp.description}</p>
-        <p className="text-sm text-indigo-300 italic mb-4" style={MONO}>
-          Why this matters: {opp.priorityReason}
+        <p className="text-sm text-gray-500 mb-4" style={MONO}>
+          {opp.priorityReason}
         </p>
 
         {opp.addedToCalendar ? (
           <div className="flex items-center justify-between">
-            <span className="text-base text-green-400" style={MONO}>📅 Added to calendar</span>
+            <span className="text-base font-medium" style={{ ...MONO, color: accent }}>✓ On calendar</span>
             <button
               onClick={() => {
                 deleteCalendarTask(`opp-task-${opp.id}`);
@@ -225,8 +222,8 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
           <div className="flex gap-2">
             <button
               onClick={handleAddToSchedule}
-              className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-base font-medium transition-colors"
-              style={MONO}
+              className="flex-1 py-2 text-white text-base font-medium transition-colors"
+              style={{ ...MONO, backgroundColor: `${accent}cc` }}
             >
               + Add to Schedule
             </button>
@@ -267,9 +264,10 @@ export default function OpportunitiesView() {
 
   const archetype = character?.archetype ?? "The Sage";
   const palette = getArchetypePalette(archetype);
+  const accent = palette.glow;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6">
+    <div className="max-w-5xl mx-auto px-4 py-8">
       {/* ── Header ── */}
       <div className="flex items-start justify-between mb-8">
         <div className="flex flex-col gap-4">
@@ -293,14 +291,14 @@ export default function OpportunitiesView() {
           </p>
         </div>
         <div className="shrink-0">
-          <PixelSprite palette={palette} scale={12} pose="ponder" />
+          <PixelSprite palette={palette} scale={10} pose="ponder" />
         </div>
       </div>
 
       {/* Career Opportunities section header */}
       {(undecided.length > 0 || scheduled.length > 0 || notInterested.length > 0) && (
         <div className="mb-2">
-          <h2 className="text-2xl font-bold text-white" style={DOT}>Career Opportunities</h2>
+          <h2 className="text-2xl font-bold text-gray-300" style={DOT}>Career Opportunities</h2>
         </div>
       )}
 
@@ -312,7 +310,7 @@ export default function OpportunitiesView() {
           </h3>
           <div className="grid gap-3 sm:grid-cols-2">
             {undecided.map((opp) => (
-              <OpportunityCard key={opp.id} opp={opp} />
+              <OpportunityCard key={opp.id} opp={opp} accent={accent} />
             ))}
           </div>
         </section>
@@ -326,7 +324,7 @@ export default function OpportunitiesView() {
           </h3>
           <div className="grid gap-3 sm:grid-cols-2">
             {scheduled.map((opp) => (
-              <OpportunityCard key={opp.id} opp={opp} />
+              <OpportunityCard key={opp.id} opp={opp} accent={accent} />
             ))}
           </div>
         </section>
@@ -340,7 +338,7 @@ export default function OpportunitiesView() {
           </h3>
           <div className="grid gap-3 sm:grid-cols-2">
             {notInterested.map((opp) => (
-              <OpportunityCard key={opp.id} opp={opp} />
+              <OpportunityCard key={opp.id} opp={opp} accent={accent} />
             ))}
           </div>
         </section>
@@ -349,16 +347,14 @@ export default function OpportunitiesView() {
       {/* Entertainment & Personal */}
       {(lifestyleUndecided.length > 0 || lifestyleScheduled.length > 0 || lifestyleSkipped.length > 0) && (
         <section>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex-1 h-px bg-gray-700/50" />
-            <h2 className="text-2xl font-bold text-white" style={DOT}>
+          <div className="mb-4">
+            <h2 className="text-2xl font-bold text-gray-300" style={DOT}>
               Entertainment &amp; Personal
             </h2>
-            <div className="flex-1 h-px bg-gray-700/50" />
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {[...lifestyleUndecided, ...lifestyleScheduled, ...lifestyleSkipped].map((opp) => (
-              <OpportunityCard key={opp.id} opp={opp} />
+              <OpportunityCard key={opp.id} opp={opp} accent={accent} />
             ))}
           </div>
         </section>

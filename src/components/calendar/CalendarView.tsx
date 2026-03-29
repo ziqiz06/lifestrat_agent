@@ -240,7 +240,7 @@ function TaskBlock({
             WebkitLineClamp: isTall ? 2 : 1,
             WebkitBoxOrient: "vertical",
             overflow: "hidden",
-            ...MONO,
+            ...DOT,
           }}
         >
           {task.title}
