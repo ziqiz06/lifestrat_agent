@@ -428,3 +428,86 @@ export function reflowCalendar(tasks: CalendarTask[], profile: UserProfile): Cal
 
   return result;
 }
+
+// ── Proposal engine ───────────────────────────────────────────────────────────
+
+export interface ProposedSlot {
+  startTime:   string; // HH:MM
+  endTime:     string; // HH:MM
+  date:        string; // YYYY-MM-DD
+  durationMin: number;
+  reason:      string;
+}
+
+/**
+ * Computes the best available time slot for an opportunity without modifying
+ * any state.  Used by the ProposalModal before the user confirms scheduling.
+ *
+ * Returns null when no deadline is set (cannot place the item on a date).
+ */
+export function computeProposedSlot(
+  opp: {
+    flexibility?: 'fixed' | 'flexible';
+    itemType?:    'event' | 'deadline' | 'task';
+    dueAt?:       string;
+    eventTime?:   string;
+    eventEndTime?: string;
+    estimatedHours: number;
+    deadline:     string | null;
+  },
+  profile:   UserProfile,
+  tasks:     CalendarTask[],
+  durationOverride?: number,
+): ProposedSlot | null {
+  if (!opp.deadline) return null;
+
+  const durationMin = durationOverride ?? Math.round(opp.estimatedHours * 60);
+
+  const safeEnd = (start: string, mins: number): string => {
+    const total = Math.min(timeToMinutes(start) + mins, 23 * 60 + 59);
+    return minutesToTime(total);
+  };
+
+  if (opp.flexibility !== 'fixed') {
+    const fixedEvents = getFixedEventsForDay(tasks, opp.deadline);
+    const allBlocks   = getAvailableTimeBlocks(fixedEvents, profile, opp.deadline);
+
+    const cutoffMins = (opp.itemType === 'deadline' && opp.dueAt)
+      ? timeToMinutes(opp.dueAt)
+      : timeToMinutes(profile.preferredEndTime || '22:00');
+
+    const trimmed = allBlocks
+      .map((b) => {
+        const bEnd = Math.min(timeToMinutes(b.endTime), cutoffMins);
+        const dur  = bEnd - timeToMinutes(b.startTime);
+        return { ...b, endTime: minutesToTime(bEnd), durationMinutes: dur };
+      })
+      .filter((b) => b.durationMinutes >= 30);
+
+    const slot = trimmed.find((b) => b.durationMinutes >= durationMin) ?? trimmed.at(-1);
+
+    if (slot) {
+      const startTime = slot.startTime;
+      const endTime   = safeEnd(startTime, Math.min(durationMin, slot.durationMinutes));
+      const reason    = opp.dueAt
+        ? `Best open slot on ${opp.deadline} before cutoff ${opp.dueAt}`
+        : `Best open slot on ${opp.deadline}`;
+      return { startTime, endTime, date: opp.deadline, durationMin, reason };
+    }
+
+    // Fallback: no slot found — use preferred start
+    const startTime = profile.preferredStartTime || '09:00';
+    return {
+      startTime,
+      endTime:  safeEnd(startTime, durationMin),
+      date:     opp.deadline,
+      durationMin,
+      reason:   `No open slot found on ${opp.deadline} — using preferred start time`,
+    };
+  }
+
+  // Fixed event
+  const startTime = opp.eventTime ?? (profile.preferredStartTime || '09:00');
+  const endTime   = opp.eventEndTime ?? safeEnd(startTime, durationMin);
+  return { startTime, endTime, date: opp.deadline, durationMin, reason: 'Fixed-time event' };
+}

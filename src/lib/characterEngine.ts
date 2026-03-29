@@ -234,6 +234,9 @@ export function computeStats(tasks: CalendarTask[]): CharacterStats {
 
   for (const task of tasks) {
     if (task.confirmed === false) continue;
+    // Missed tasks and unresolved past tasks don't contribute to stats
+    if (task.completionStatus === 'missed') continue;
+    if (task.completionStatus === 'awaiting_confirmation') continue;
     const boosts = TASK_BOOSTS[task.type];
     if (!boosts) continue;
 
@@ -261,18 +264,30 @@ export function computeStats(tasks: CalendarTask[]): CharacterStats {
 }
 
 // ── Level derived from total stats (max level ~10) ────────────────────────────
-export function getLevel(stats: CharacterStats): number {
+/**
+ * If xp is provided and > 0, level is XP-based (1 XP per 100 points).
+ * Otherwise falls back to stat-total-based level for backward compatibility.
+ */
+export function getLevel(stats: CharacterStats, xp?: number): number {
+  if (xp !== undefined && xp > 0) return Math.max(1, Math.floor(xp / 100) + 1);
   const total = Object.values(stats).reduce((a, b) => a + b, 0);
   return Math.max(1, Math.floor(total / 75));
 }
 
-export function getLevelProgress(stats: CharacterStats): {
+export function getLevelProgress(
+  stats: CharacterStats,
+  xp?: number,
+): {
   current: number;
   needed: number;
   pct: number;
 } {
+  if (xp !== undefined && xp > 0) {
+    const current = xp % 100;
+    return { current, needed: 100, pct: Math.round((current / 100) * 100) };
+  }
   const total = Object.values(stats).reduce((a, b) => a + b, 0);
-  const level = getLevel(stats);
+  const level = Math.max(1, Math.floor(total / 75));
   const current = total - level * 75;
   const needed = 75;
   return { current, needed, pct: Math.round((current / needed) * 100) };

@@ -50,6 +50,39 @@ export interface MockEmail {
   opportunityId?: string; // links to Opportunity if applicable
 }
 
+export interface RankingDebug {
+  // ── Layer 1: deterministic actionability (email-derived facts) ─────────────
+  baseActionabilityScore: number;   // 0-10: urgency×0.6 + effort×0.2 + confidence×0.2
+  urgency:                number;   // 0-10: days until deadline
+  effort:                 number;   // 0-10: inverse effort (low effort = high score)
+  confidence:             number;   // 0-10: how much info the email provided
+
+  // ── Layer 2: profile-driven preference fit (field-agnostic) ───────────────
+  preferenceFitScore:  number;      // 0-10: dynamic term match against user profile text
+  profileCoverage:     number;      // 0-1: fraction of profile terms found in opp text
+  matchedTerms:        string[];    // profile terms that matched opp text
+  matchedSignals:      string[];    // human-readable match labels
+
+  // ── Layer 3: career value (category impact) ────────────────────────────────
+  careerValueScore: number;         // 0-10: based on email category
+
+  // ── Layer 4: AI semantic overlay (null until AI runs) ─────────────────────
+  aiRelevanceScore: number | null;  // 0-10: LLM semantic judgment
+  aiExplanation:    string;         // why the AI ranked it where it did
+
+  // ── Composite ──────────────────────────────────────────────────────────────
+  penalty:      number;             // subtracted from composite
+  finalScore:   number;             // the value stored in opp.priority
+  explanation:  string;             // human-readable summary of the ranking rationale
+  today:        string;
+
+  // ── Backward-compat aliases ────────────────────────────────────────────────
+  preferenceFit:   number;          // = preferenceFitScore
+  careerImpact:    number;          // = careerValueScore
+  composite:       number;          // weighted composite before penalty
+  matchedKeywords: string[];        // = matchedTerms
+}
+
 export interface Opportunity {
   id: string;
   title: string;
@@ -62,10 +95,35 @@ export interface Opportunity {
   emailId: string;
   interested: boolean | null; // null = undecided, true = yes, false = no
   addedToCalendar: boolean;
+  /** Whether this is a timed event, a deadline, or a flexible task. */
+  itemType?: 'event' | 'deadline' | 'task';
+  /**
+   * Whether this item is time-anchored ("fixed") or can be worked on any time
+   * before a cutoff ("flexible").
+   *
+   * fixed   — meetings, classes, interviews, events with an explicit start time.
+   *           Must be placed at their exact time; treated as hard constraints.
+   * flexible — deadlines, applications, RSVP deadlines, prep work.
+   *           Requires a work block BEFORE dueAt, not AT dueAt.
+   */
+  flexibility?: 'fixed' | 'flexible';
   /** Parsed real event start time (HH:MM). Present for fixed-time events like networking nights, career fairs, workshops. */
   eventTime?: string;
   /** Parsed real event end time (HH:MM). Present when the email specifies a range like "10am–3pm". */
   eventEndTime?: string;
+  /** Due time (HH:MM) for deadline items — e.g. 23:59 for "by 11:59pm". NOT an event start time. */
+  dueAt?: string;
+  rankingDebug?: RankingDebug;
+  /** AI-assigned relevance score (0-10), stored independently so it survives heuristic re-ranks. */
+  aiRelevanceScore?: number;
+  /** Human-readable explanation from the AI rerank pass. */
+  aiExplanation?: string;
+  /** Number of source emails merged into this opportunity (≥ 1). */
+  sourceCount?: number;
+  /** ISO date of the most recent source email. */
+  latestEmailDate?: string;
+  /** IDs of all source emails contributing to this opportunity. */
+  sourceEmailIds?: string[];
 }
 
 export type TaskType =
@@ -85,11 +143,27 @@ export type TaskFlex = 'fixed' | 'flexible';
 
 export type TaskStatus =
   | 'confirmed'
+  | 'proposed'                 // suggested slot shown to user, not yet confirmed
   | 'needs_confirmation'
   | 'scheduling_conflict'
   | 'deferred'
   | 'unscheduled'
-  | 'awaiting_permission';
+  | 'awaiting_permission'
+  | 'confirmed_with_override'; // user accepted a soft conflict (e.g. dinner overlap)
+
+/**
+ * A recurrence rule stored on a CalendarTask.
+ * Events are NOT duplicated in the store — recurrence is expanded at render time.
+ */
+export interface RecurrenceRule {
+  frequency: 'none' | 'daily' | 'weekly' | 'monthly';
+  /** Repeat every N units (default 1). */
+  interval?: number;
+  /** For weekly frequency: days of week to recur on (0 = Sun … 6 = Sat). */
+  daysOfWeek?: number[];
+  /** Stop expanding after this date (YYYY-MM-DD). */
+  endDate?: string;
+}
 
 export type ScheduleBlockRecurrence = 'none' | 'daily' | 'weekly' | 'weekdays' | 'weekends';
 
@@ -114,6 +188,12 @@ export interface ScheduleResult {
   overflow: boolean;
 }
 
+export type CompletionStatus =
+  | 'scheduled'             // confirmed, in the future
+  | 'awaiting_confirmation' // end time passed — waiting for user to mark outcome
+  | 'completed'             // user marked as done — XP awarded
+  | 'missed';               // user marked as missed — no XP
+
 export interface CalendarTask {
   id: string;
   title: string;
@@ -129,6 +209,16 @@ export interface CalendarTask {
   status?: TaskStatus; // scheduling status label
   splitGroup?: string; // shared ID across "(continued)" blocks of the same task
   totalScheduledMinutes?: number; // sum across all split blocks
+  /** Optional description shown in the event detail popover. */
+  description?: string;
+  /** Recurrence rule — if present, this event repeats. NOT expanded in store. */
+  recurrence?: RecurrenceRule;
+  /** True when the user explicitly accepted a conflict for this task. */
+  conflictOverride?: boolean;
+  /** Lifecycle status for XP tracking. */
+  completionStatus?: CompletionStatus;
+  /** True once XP has been awarded for this task (prevents double-XP). */
+  xpAwarded?: boolean;
 }
 
 export interface Conflict {
@@ -141,6 +231,8 @@ export interface Conflict {
   reason: string;
   suggestions: string[];
   isBlockedTime?: boolean; // true when taskB is a blocked interval, not another task
+  /** soft = routine block overlap (user can override); hard = two real tasks clash. */
+  severity?: 'soft' | 'hard';
 }
 
 export interface Goal {
@@ -231,6 +323,13 @@ export interface CharacterAppearance {
   faceShape: FaceShape;
 }
 
+export interface XPLogEntry {
+  taskTitle: string;
+  taskType: string;
+  xp: number;
+  date: string; // "YYYY-MM-DD"
+}
+
 export interface Character {
   name: string;
   stats: CharacterStats;
@@ -239,4 +338,6 @@ export interface Character {
   signals: StateSignal[];
   statHistory: StatSnapshot[];
   appearance?: CharacterAppearance; // optional for backward compat
+  xp?: number;                      // total accumulated XP from completed events
+  xpLog?: XPLogEntry[];             // last 10 XP gains (newest first)
 }

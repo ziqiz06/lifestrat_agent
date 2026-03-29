@@ -32,6 +32,7 @@ export function detectConflicts(tasks: CalendarTask[], profile: UserProfile): Co
         taskATitle: a.title,
         taskBTitle: b.title,
         date: a.date,
+        severity: 'hard',
         reason: `"${a.title}" (${a.startTime}–${a.endTime}) overlaps with "${b.title}" (${b.startTime}–${b.endTime}) on ${a.date}.`,
         suggestions: [
           `Keep "${a.title}" and reschedule "${b.title}" to another slot.`,
@@ -65,10 +66,10 @@ export function detectConflicts(tasks: CalendarTask[], profile: UserProfile): Co
         const overlapStart = Math.max(taskStart, interval.start);
         const overlapEnd = Math.min(taskEnd, interval.end);
         const fmt = (m: number) => {
-          const h = Math.floor(m / 60);
-          const min = m % 60;
-          const suffix = h >= 12 ? 'PM' : 'AM';
-          return `${((h % 12) || 12)}:${String(min).padStart(2, '0')} ${suffix}`;
+          const clamped = Math.min(Math.max(m, 0), 23 * 60 + 59);
+          const h = Math.floor(clamped / 60);
+          const min = clamped % 60;
+          return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
         };
 
         const id = `blocked-${task.id}-${interval.label}`;
@@ -82,6 +83,7 @@ export function detectConflicts(tasks: CalendarTask[], profile: UserProfile): Co
           taskATitle: task.title,
           taskBTitle: interval.label,
           date,
+          severity: 'soft',
           reason: `"${task.title}" overlaps your blocked ${interval.label} (${fmt(overlapStart)}–${fmt(overlapEnd)}).`,
           suggestions: [
             `Move "${task.title}" to a time outside the blocked ${interval.label} window.`,

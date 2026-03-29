@@ -1,5 +1,6 @@
 import { MockEmail, Opportunity, EmailCategory } from '@/types';
-import { parseEventTimes } from './timeParser';
+import { parseEmailTimes } from './timeParser';
+import { clusterEmails, pickCanonical } from './emailDeduplication';
 
 const ESTIMATED_HOURS: Record<EmailCategory, number> = {
   internship_application: 4,
@@ -61,45 +62,79 @@ function parseDeadline(text: string): string | null {
  * also extracts the actual event start/end time from the subject + body so the
  * calendar planner can anchor the task at its real time.
  */
+/** Derives one Opportunity per email cluster (semantically deduplicated). */
 export function deriveOpportunitiesFromEmails(emails: MockEmail[]): Opportunity[] {
-  const seen = new Set<string>();
+  // 1. Deduplicate raw email list by id
+  const byId = new Map(emails.map((e) => [e.id, e]));
+  const unique = Array.from(byId.values());
 
-  return emails
-    .filter((e) => {
-      if (e.category === 'ignore') return false;
-      if (seen.has(e.id)) return false;
-      seen.add(e.id);
-      return true;
-    })
-    .map((email) => {
-      const searchText = `${email.subject} ${email.body}`;
-      const deadline = parseDeadline(searchText);
+  // 2. Drop ignored emails, then cluster semantically similar ones
+  const nonIgnored = unique.filter((e) => e.category !== 'ignore');
+  const clusters   = clusterEmails(nonIgnored);
 
-      // Parse actual event time for fixed-time categories
-      let eventTime: string | undefined;
-      let eventEndTime: string | undefined;
-      if (FIXED_TIME_CATEGORIES.has(email.category)) {
-        const parsed = parseEventTimes(searchText);
-        eventTime = parsed.startTime;
-        eventEndTime = parsed.endTime;
-      }
+  // 3. Convert each cluster → one Opportunity
+  return clusters.map((cluster) => {
+    const email = pickCanonical(cluster);
 
-      return {
-        id: `opp-${email.id}`,
-        title: email.subject,
-        description: email.body.length > 160
-          ? email.body.slice(0, 157) + '...'
-          : email.body,
-        category: email.category,
-        deadline,
-        estimatedHours: ESTIMATED_HOURS[email.category] ?? 1,
-        priority: 5, // re-ranked by rankOpportunities() in the store
-        priorityReason: PRIORITY_REASONS[email.category] ?? 'Detected from email.',
-        emailId: email.id,
-        interested: null,
-        addedToCalendar: false,
-        eventTime,
-        eventEndTime,
-      };
-    });
+    // Metadata about merged sources
+    const sourceEmailIds  = cluster.map((e) => e.id);
+    const latestEmailDate = cluster.reduce(
+      (latest, e) => (e.date > latest ? e.date : latest),
+      '',
+    );
+
+    const searchText  = `${email.subject} ${email.body}`;
+    const deadline    = parseDeadline(searchText);
+
+    // Parse times — use isDeadlineCategory hint for "deadline" emails
+    const isDeadlineCat = email.category === 'deadline';
+    const parsed        = parseEmailTimes(searchText, isDeadlineCat);
+
+    let itemType: 'event' | 'deadline' | 'task';
+    let flexibility: 'fixed' | 'flexible';
+    let eventTime:    string | undefined;
+    let eventEndTime: string | undefined;
+    let dueAt:        string | undefined;
+
+    if (parsed.isDeadline) {
+      itemType    = 'deadline';
+      flexibility = 'flexible';
+      dueAt       = parsed.dueTime;
+    } else if (parsed.startTime && FIXED_TIME_CATEGORIES.has(email.category)) {
+      itemType     = 'event';
+      flexibility  = 'fixed';
+      eventTime    = parsed.startTime;
+      eventEndTime = parsed.endTime;
+    } else if (FIXED_TIME_CATEGORIES.has(email.category)) {
+      itemType    = 'task';
+      flexibility = 'fixed';
+    } else {
+      itemType    = 'task';
+      flexibility = 'flexible';
+    }
+
+    return {
+      id: `opp-${email.id}`,
+      title: email.subject,
+      description: email.body.length > 160
+        ? email.body.slice(0, 157) + '...'
+        : email.body,
+      category: email.category,
+      deadline,
+      estimatedHours: ESTIMATED_HOURS[email.category] ?? 1,
+      priority: 5,
+      priorityReason: PRIORITY_REASONS[email.category] ?? 'Detected from email.',
+      emailId: email.id,
+      interested: null,
+      addedToCalendar: false,
+      itemType,
+      flexibility,
+      eventTime,
+      eventEndTime,
+      dueAt,
+      sourceCount:     cluster.length,
+      latestEmailDate,
+      sourceEmailIds,
+    };
+  });
 }

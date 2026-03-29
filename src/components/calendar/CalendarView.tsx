@@ -1,9 +1,65 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAppStore } from "@/store/appStore";
-import { CalendarTask, Conflict, TaskType } from "@/types";
+import { CalendarTask, Conflict, RecurrenceRule, TaskType } from "@/types";
 import { scheduleBlockAppliesToDate } from "@/lib/dayPlanner";
 import { detectOverflow } from "@/lib/dayPlanner";
+
+// ── Recurrence helpers ─────────────────────────────────────────────────────────
+
+/** Returns true if a recurring task should appear on the given date. */
+function occursOn(task: CalendarTask, date: string): boolean {
+  const rule = task.recurrence;
+  if (!rule || rule.frequency === 'none') return task.date === date;
+  if (date < task.date) return false;
+  if (rule.endDate && date > rule.endDate) return false;
+
+  const d    = new Date(date        + 'T00:00:00');
+  const orig = new Date(task.date   + 'T00:00:00');
+  const interval = rule.interval ?? 1;
+
+  switch (rule.frequency) {
+    case 'daily': {
+      const diffDays = Math.round((d.getTime() - orig.getTime()) / 86_400_000);
+      return diffDays >= 0 && diffDays % interval === 0;
+    }
+    case 'weekly': {
+      if (rule.daysOfWeek && rule.daysOfWeek.length > 0) {
+        return d >= orig && rule.daysOfWeek.includes(d.getDay());
+      }
+      const diffWeeks = Math.round((d.getTime() - orig.getTime()) / (7 * 86_400_000));
+      return d.getDay() === orig.getDay() && diffWeeks >= 0 && diffWeeks % interval === 0;
+    }
+    case 'monthly': {
+      if (d.getDate() !== orig.getDate()) return false;
+      const monthDiff =
+        (d.getFullYear() - orig.getFullYear()) * 12 + (d.getMonth() - orig.getMonth());
+      return monthDiff >= 0 && monthDiff % interval === 0;
+    }
+  }
+  return false;
+}
+
+/**
+ * Expands recurring tasks into virtual instances for the visible week dates.
+ * Non-recurring tasks are included only if their date is in weekDates.
+ * Virtual instances keep the original task.id (so store actions work).
+ */
+function expandRecurringTasks(tasks: CalendarTask[], weekDates: string[]): CalendarTask[] {
+  const result: CalendarTask[] = [];
+  for (const task of tasks) {
+    if (!task.recurrence || task.recurrence.frequency === 'none') {
+      if (weekDates.includes(task.date)) result.push(task);
+    } else {
+      for (const date of weekDates) {
+        if (occursOn(task, date)) {
+          result.push({ ...task, date });
+        }
+      }
+    }
+  }
+  return result;
+}
 
 const DOT  = { fontFamily: "var(--font-dot)"  } as const;
 const MONO = { fontFamily: "var(--font-mono)" } as const;
@@ -138,6 +194,21 @@ const TYPE_OPTIONS: { value: TaskType; label: string; color: string }[] = [
   { value: "other", label: "Other", color: "#6b7280" },
 ];
 
+// ── Drag helpers ───────────────────────────────────────────────────────────────
+function minutesToTime(m: number): string {
+  const h = Math.floor(m / 60);
+  const min = m % 60;
+  return `${String(Math.min(h, 23)).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+interface DragState {
+  task:          CalendarTask;
+  offsetMinutes: number; // how many minutes from task start the user grabbed
+  ghostDate:     string;
+  ghostStart:    string;
+  ghostEnd:      string;
+}
+
 // ── Local types ────────────────────────────────────────────────────────────────
 interface SelectedTask {
   task: CalendarTask;
@@ -151,17 +222,32 @@ interface AddModalState {
   startTime: string;
 }
 
+// ── Recurrence form state (used inside AddEventModal) ──────────────────────────
+interface RecurrenceFormState {
+  frequency: RecurrenceRule['frequency'];
+  daysOfWeek: number[];
+  endDate: string;
+}
+
 // ── TaskBlock ──────────────────────────────────────────────────────────────────
 function TaskBlock({
   laid,
   isConflict,
   onClick,
   onExtend,
+  onDragStart,
+  isDragging,
+  onMarkCompleted,
+  onMarkMissed,
 }: {
   laid: LaidTask;
   isConflict: boolean;
   onClick: (rect: DOMRect) => void;
   onExtend?: (extraMinutes: number) => void;
+  onDragStart?: (task: CalendarTask, e: React.MouseEvent) => void;
+  isDragging?: boolean;
+  onMarkCompleted?: () => void;
+  onMarkMissed?: () => void;
 }) {
   const { task, lane, laneCount } = laid;
   const [hovered, setHovered] = useState(false);
@@ -173,14 +259,37 @@ function TaskBlock({
   const isTall = height >= 48;
   const isFlexible = task.flex === "flexible";
 
-  const borderColor = isConflict ? "#ef4444" : task.color;
-  const bg = `${task.color}${confirmed ? "20" : "0d"}`;
-  const leftBorderColor = !confirmed ? "#eab308" : borderColor;
+  const cs = task.completionStatus;
+  const isCompleted = cs === 'completed';
+  const isMissed    = cs === 'missed';
+  const isAwaiting  = cs === 'awaiting_confirmation';
+
+  const isOverrideAccepted = task.status === 'confirmed_with_override';
+  const borderColor = isConflict && !isOverrideAccepted ? "#ef4444" : task.color;
+  const bg = isMissed
+    ? 'rgba(75,85,99,0.15)'
+    : isCompleted
+      ? `${task.color}${confirmed ? "28" : "0d"}`
+      : `${task.color}${confirmed ? "20" : "0d"}`;
+  const leftBorderColor = isMissed
+    ? '#6b7280'
+    : isCompleted
+      ? '#22c55e'
+      : isAwaiting
+        ? '#f59e0b'
+        : isOverrideAccepted
+          ? "#d97706"
+          : !confirmed
+            ? "#eab308"
+            : borderColor;
 
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onMouseDown={(e) => {
+        if (isFlexible && onDragStart) onDragStart(task, e);
+      }}
       onClick={(e) => {
         e.stopPropagation();
         onClick((e.currentTarget as HTMLDivElement).getBoundingClientRect());
@@ -199,17 +308,31 @@ function TaskBlock({
         borderRadius: 6,
         overflow: "hidden",
         zIndex: isConflict ? 2 : 1,
-        cursor: "pointer",
-        transition: "filter 0.12s, box-shadow 0.12s",
+        cursor: isFlexible ? (isDragging ? "grabbing" : "grab") : "pointer",
+        transition: isDragging ? "none" : "filter 0.12s, box-shadow 0.12s",
+        opacity: isDragging ? 0.35 : 1,
       }}
-      className={hovered ? "brightness-125 shadow-lg" : ""}
+      className={hovered && !isDragging ? "brightness-125 shadow-lg" : ""}
     >
       <div className="px-1.5 py-1 h-full flex flex-col gap-0.5 overflow-hidden">
         <div className="flex items-center gap-1 min-w-0">
-          {isConflict && (
+          {/* Completion status icons */}
+          {isCompleted && (
+            <span className="text-green-400 text-[10px] shrink-0" title="Completed">✓</span>
+          )}
+          {isMissed && (
+            <span className="text-gray-500 text-[10px] shrink-0" title="Missed">✕</span>
+          )}
+          {isAwaiting && (
+            <span className="text-amber-400 text-[10px] shrink-0 animate-pulse" title="Did you complete this?">?</span>
+          )}
+          {!isCompleted && !isMissed && !isAwaiting && isConflict && !isOverrideAccepted && (
             <span className="text-red-400 text-[10px] shrink-0" title="Scheduling Conflict">⚠</span>
           )}
-          {!confirmed && task.status !== 'needs_confirmation' && (
+          {!isCompleted && !isMissed && !isAwaiting && isOverrideAccepted && (
+            <span className="text-amber-500 text-[10px] shrink-0" title="Conflict accepted">~</span>
+          )}
+          {!isCompleted && !isMissed && !isAwaiting && !confirmed && task.status !== 'needs_confirmation' && !isOverrideAccepted && (
             <span className="text-yellow-400 text-[10px] shrink-0" title="Unconfirmed">◌</span>
           )}
           {task.status === 'needs_confirmation' && (
@@ -221,13 +344,13 @@ function TaskBlock({
           {task.status === 'awaiting_permission' && (
             <span className="text-[9px] px-1 rounded bg-orange-900/60 text-orange-300 border border-orange-700/50 shrink-0 leading-tight">?</span>
           )}
-          {isFlexible && !task.status && (
+          {isFlexible && (
             <span className="text-[9px] px-1 rounded bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 shrink-0 leading-tight">flex</span>
           )}
           {isTall && (
             <span
               className="text-[10px] font-semibold truncate"
-              style={{ color: task.color, ...MONO }}
+              style={{ color: isMissed ? '#6b7280' : isCompleted ? '#22c55e' : task.color, ...MONO }}
             >
               {task.startTime}–{task.endTime}
             </span>
@@ -246,8 +369,29 @@ function TaskBlock({
         >
           {task.title}
         </p>
+        {/* Awaiting-confirmation quick actions — shown on hover */}
+        {isAwaiting && hovered && height >= 36 && (
+          <div className="flex gap-1 mt-auto pt-0.5" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={(e) => { e.stopPropagation(); onMarkCompleted?.(); }}
+              className="flex-1 text-[9px] py-0.5 bg-green-900/60 hover:bg-green-800/80 text-green-300 transition-colors leading-none"
+              style={MONO}
+              title="Mark as completed"
+            >
+              ✓ Done
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onMarkMissed?.(); }}
+              className="flex-1 text-[9px] py-0.5 bg-gray-700/60 hover:bg-gray-600/80 text-gray-400 transition-colors leading-none"
+              style={MONO}
+              title="Mark as missed"
+            >
+              ✕ Missed
+            </button>
+          </div>
+        )}
         {/* Extend buttons — only for flexible tasks, only when hovered and tall enough */}
-        {isFlexible && onExtend && hovered && height >= 40 && (
+        {isFlexible && !isAwaiting && onExtend && hovered && height >= 40 && (
           <div className="flex gap-1 mt-auto pt-0.5" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={(e) => { e.stopPropagation(); onExtend(30); }}
@@ -273,6 +417,8 @@ function TaskBlock({
 }
 
 // ── AddEventModal ──────────────────────────────────────────────────────────────
+const DOW_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
+
 function AddEventModal({
   initial,
   onClose,
@@ -283,11 +429,26 @@ function AddEventModal({
   onAdd: (task: Omit<CalendarTask, "id">) => void;
 }) {
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [date, setDate] = useState(initial.date);
   const [startTime, setStartTime] = useState(initial.startTime);
   const [endTime, setEndTime] = useState(() => addOneHour(initial.startTime));
   const [type, setType] = useState<TaskType>("other");
   const [error, setError] = useState("");
+  const [recurrence, setRecurrence] = useState<RecurrenceFormState>({
+    frequency: 'none',
+    daysOfWeek: [],
+    endDate: '',
+  });
+
+  function toggleDow(dow: number) {
+    setRecurrence((r) => ({
+      ...r,
+      daysOfWeek: r.daysOfWeek.includes(dow)
+        ? r.daysOfWeek.filter((d) => d !== dow)
+        : [...r.daysOfWeek, dow],
+    }));
+  }
 
   const selectedType =
     TYPE_OPTIONS.find((o) => o.value === type) ??
@@ -318,14 +479,28 @@ function AddEventModal({
       setError("End time must be after start time.");
       return;
     }
+    const recurrenceRule: RecurrenceRule | undefined =
+      recurrence.frequency === 'none'
+        ? undefined
+        : {
+            frequency: recurrence.frequency,
+            interval: 1,
+            daysOfWeek:
+              recurrence.frequency === 'weekly' && recurrence.daysOfWeek.length > 0
+                ? recurrence.daysOfWeek
+                : undefined,
+            endDate: recurrence.endDate || undefined,
+          };
     onAdd({
       title: title.trim(),
+      description: description.trim() || undefined,
       date,
       startTime,
       endTime,
       type,
       color: selectedType.color,
       confirmed: true,
+      recurrence: recurrenceRule,
     });
     onClose();
   }
@@ -441,6 +616,76 @@ function AddEventModal({
             </div>
           </div>
 
+          {/* Description */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-1.5" style={MONO}>Description (optional)</label>
+            <textarea
+              className="w-full bg-gray-800 text-white px-3 py-2 text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none placeholder-gray-500 resize-none"
+              style={MONO}
+              rows={2}
+              placeholder="Notes, location, links…"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+
+          {/* Recurrence */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-1.5" style={MONO}>Recurrence</label>
+            <select
+              className="w-full bg-gray-800 text-white px-3 py-2 text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none"
+              style={MONO}
+              value={recurrence.frequency}
+              onChange={(e) =>
+                setRecurrence((r) => ({
+                  ...r,
+                  frequency: e.target.value as RecurrenceRule['frequency'],
+                  daysOfWeek: [],
+                }))
+              }
+            >
+              <option value="none">Does not repeat</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly (same day)</option>
+            </select>
+
+            {/* Day-of-week selector (weekly only) */}
+            {recurrence.frequency === 'weekly' && (
+              <div className="flex gap-1.5 mt-2">
+                {DOW_LABELS.map((label, dow) => (
+                  <button
+                    key={dow}
+                    type="button"
+                    onClick={() => toggleDow(dow)}
+                    className={`w-8 h-8 text-xs font-bold transition-colors border ${
+                      recurrence.daysOfWeek.includes(dow)
+                        ? 'bg-indigo-600 text-white border-indigo-500'
+                        : 'bg-gray-800 text-gray-400 border-gray-600 hover:border-gray-500'
+                    }`}
+                    style={MONO}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* End date (daily / weekly / monthly) */}
+            {recurrence.frequency !== 'none' && (
+              <div className="mt-2">
+                <label className="block text-xs text-gray-500 mb-1" style={MONO}>Ends on (optional)</label>
+                <input
+                  type="date"
+                  className="w-full bg-gray-800 text-white px-3 py-1.5 text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                  style={MONO}
+                  value={recurrence.endDate}
+                  onChange={(e) => setRecurrence((r) => ({ ...r, endDate: e.target.value }))}
+                />
+              </div>
+            )}
+          </div>
+
           {/* Validation error */}
           {error && <p className="text-sm text-red-400" style={MONO}>{error}</p>}
 
@@ -478,16 +723,28 @@ function TaskPopover({
   onResolve,
   onDelete,
   onUpdate,
+  onAcceptConflict,
+  onUndoOverride,
+  onMarkCompleted,
+  onMarkMissed,
 }: {
   selected: SelectedTask;
   onClose: () => void;
   onConfirm: () => void;
   onResolve: (keepId: string) => void;
   onDelete: () => void;
-  onUpdate: (updates: Partial<Pick<CalendarTask, 'title' | 'startTime' | 'endTime'>>) => void;
+  onUpdate: (updates: Partial<Pick<CalendarTask, 'title' | 'startTime' | 'endTime' | 'description'>>) => void;
+  onAcceptConflict: () => void;
+  onUndoOverride: () => void;
+  onMarkCompleted: () => void;
+  onMarkMissed: () => void;
 }) {
   const { task, rect, conflict, conflictPartner } = selected;
   const confirmed = task.confirmed !== false;
+  const cs = task.completionStatus;
+  const isCompleted = cs === 'completed';
+  const isMissed    = cs === 'missed';
+  const isAwaiting  = cs === 'awaiting_confirmation';
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
@@ -574,16 +831,41 @@ function TaskPopover({
                   </span>
                 )}
               </p>
-              {task.status && task.status !== 'confirmed' && (
-                <div className={`mt-1 text-[10px] px-2 py-0.5 inline-block font-medium ${
-                  task.status === 'needs_confirmation' ? 'bg-yellow-900/50 text-yellow-300' :
-                  task.status === 'scheduling_conflict' ? 'bg-red-900/50 text-red-300' :
-                  task.status === 'deferred' ? 'bg-gray-700 text-gray-400' :
-                  task.status === 'awaiting_permission' ? 'bg-orange-900/50 text-orange-300' :
-                  task.status === 'unscheduled' ? 'bg-gray-700 text-gray-500' : ''
-                }`} style={MONO}>
-                  {task.status.replace(/_/g, ' ')}
-                </div>
+              {/* Flex / scheduling metadata */}
+              <div className="flex flex-wrap gap-1 mt-1">
+                {task.flex === 'flexible' && (
+                  <span className="text-[10px] px-1.5 py-0.5 bg-indigo-900/50 text-indigo-300 border border-indigo-800/50" style={MONO}>
+                    Flexible task · can be moved
+                  </span>
+                )}
+                {task.recurrence && task.recurrence.frequency !== 'none' && (
+                  <span className="text-[10px] px-1.5 py-0.5 bg-gray-700/60 text-gray-400 border border-gray-600/40" style={MONO}>
+                    ↻ Recurring ({task.recurrence.frequency})
+                  </span>
+                )}
+                {task.status && task.status !== 'confirmed' && task.status !== 'confirmed_with_override' && (
+                  <span className={`text-[10px] px-1.5 py-0.5 font-medium ${
+                    task.status === 'needs_confirmation' ? 'bg-yellow-900/50 text-yellow-300' :
+                    task.status === 'scheduling_conflict' ? 'bg-red-900/50 text-red-300' :
+                    task.status === 'deferred' ? 'bg-gray-700 text-gray-400' :
+                    task.status === 'awaiting_permission' ? 'bg-orange-900/50 text-orange-300' :
+                    task.status === 'unscheduled' ? 'bg-gray-700 text-gray-500' :
+                    'bg-gray-700 text-gray-400'
+                  }`} style={MONO}>
+                    {task.status.replace(/_/g, ' ')}
+                  </span>
+                )}
+                {task.status === 'confirmed_with_override' && (
+                  <span className="text-[10px] px-1.5 py-0.5 bg-amber-900/40 text-amber-400 border border-amber-700/40" style={MONO}>
+                    Conflict accepted
+                  </span>
+                )}
+              </div>
+              {/* Description */}
+              {task.description && (
+                <p className="text-xs text-gray-500 mt-1.5 leading-relaxed" style={MONO}>
+                  {task.description}
+                </p>
               )}
             </div>
             <button
@@ -615,10 +897,70 @@ function TaskPopover({
             </div>
           )}
 
+          {/* ── Completion section ──────────────────────────────────────── */}
+          {isAwaiting && (
+            <div className="mb-3 bg-amber-950/30 border border-amber-700/40 p-3">
+              <p className="text-xs text-amber-300 font-semibold mb-1" style={MONO}>Did you complete this?</p>
+              <p className="text-xs text-gray-500 mb-2 leading-relaxed" style={MONO}>
+                Mark the outcome to earn XP and update your character stats.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { onMarkCompleted(); onClose(); }}
+                  className="flex-1 py-1.5 bg-green-900/50 hover:bg-green-800/70 text-green-300 text-sm font-medium border border-green-700/50 transition-colors"
+                  style={MONO}
+                >
+                  ✓ Completed
+                </button>
+                <button
+                  onClick={() => { onMarkMissed(); onClose(); }}
+                  className="flex-1 py-1.5 bg-gray-700/50 hover:bg-gray-700 text-gray-400 text-sm border border-gray-600/40 transition-colors"
+                  style={MONO}
+                >
+                  ✕ Missed
+                </button>
+              </div>
+            </div>
+          )}
+          {isCompleted && (
+            <div className="mb-3 flex items-center gap-2 bg-green-950/30 border border-green-700/30 px-3 py-2">
+              <span className="text-green-400 text-sm">✓</span>
+              <p className="text-xs text-green-400 font-medium" style={MONO}>Completed — XP awarded</p>
+            </div>
+          )}
+          {isMissed && (
+            <div className="mb-3 flex items-center gap-2 bg-gray-800/50 border border-gray-600/30 px-3 py-2">
+              <span className="text-gray-500 text-sm">✕</span>
+              <p className="text-xs text-gray-500" style={MONO}>Marked as missed</p>
+            </div>
+          )}
+
           {/* Conflict section or no-conflict footer */}
-          {conflict && conflict.isBlockedTime ? (
-            // Blocked-time conflict — no resolution options, just a warning
-            <div className="bg-orange-950/40 border border-orange-800/40 p-3">
+          {task.conflictOverride ? (
+            // Override accepted — soft indicator with undo
+            <div className="bg-amber-950/30 border border-amber-800/30 p-3">
+              <div className="flex items-start gap-2">
+                <span className="text-amber-500 text-sm shrink-0 mt-0.5">~</span>
+                <div className="flex-1">
+                  <p className="text-sm text-amber-400 font-semibold leading-tight" style={MONO}>
+                    Conflict accepted
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1 leading-relaxed" style={MONO}>
+                    You chose to keep this event despite a blocked-time overlap.
+                  </p>
+                  <button
+                    onClick={() => { onUndoOverride(); onClose(); }}
+                    className="mt-2 text-xs text-gray-500 hover:text-gray-300 transition-colors underline"
+                    style={MONO}
+                  >
+                    Undo override — re-check conflicts
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : conflict && conflict.isBlockedTime ? (
+            // Blocked-time conflict — soft: show warning + "Keep anyway" option
+            <div className="bg-orange-950/40 border border-orange-800/40 p-3 space-y-2">
               <div className="flex items-start gap-2">
                 <span className="text-orange-400 text-sm shrink-0 mt-0.5">⚠</span>
                 <div>
@@ -628,10 +970,23 @@ function TaskPopover({
                   <p className="text-sm text-gray-400 mt-1 leading-relaxed" style={MONO}>
                     {conflict.reason}
                   </p>
-                  <p className="text-sm text-gray-500 mt-1.5" style={MONO}>
-                    Move this event or adjust the blocked interval in Preferences.
-                  </p>
                 </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { onAcceptConflict(); onClose(); }}
+                  className="flex-1 text-sm bg-amber-900/40 hover:bg-amber-900/70 text-amber-300 border border-amber-700/50 px-3 py-1.5 transition-colors"
+                  style={MONO}
+                >
+                  Keep anyway
+                </button>
+                <button
+                  onClick={onClose}
+                  className="flex-1 text-sm bg-gray-700/50 hover:bg-gray-700 text-gray-400 border border-gray-600/40 px-3 py-1.5 transition-colors"
+                  style={MONO}
+                >
+                  Move event
+                </button>
               </div>
             </div>
           ) : conflict && conflictPartner ? (
@@ -697,6 +1052,14 @@ function TaskPopover({
                   className="w-full bg-gray-800 text-white text-sm px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
                   style={MONO}
                   placeholder="Event name"
+                />
+                <textarea
+                  value={task.description ?? ""}
+                  onChange={(e) => onUpdate({ description: e.target.value || undefined })}
+                  className="w-full bg-gray-800 text-white text-xs px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none resize-none"
+                  style={MONO}
+                  rows={2}
+                  placeholder="Description (optional)"
                 />
                 <div className="flex gap-2">
                   <div className="flex-1">
@@ -818,14 +1181,30 @@ export default function CalendarView() {
     addCustomCalendarTask,
     extendTask,
     updateCalendarTask,
+    acceptConflict,
+    undoConflictOverride,
+    markTaskCompleted,
+    markTaskMissed,
+    checkPastTasks,
+    aiPlanCalendar,
+    aiPlanLoading,
+    aiPlanSummary,
   } = useAppStore();
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedTask, setSelectedTask] = useState<SelectedTask | null>(null);
+
+  // ── Drag state ────────────────────────────────────────────────────────────
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const dragRef    = useRef<DragState | null>(null);
+  const scrollRef  = useRef<HTMLDivElement>(null);
+  const gridRef    = useRef<HTMLDivElement>(null);
+  const droppedRef = useRef(false); // suppress click after drop
   const [addModal, setAddModal] = useState<AddModalState | null>(null);
 
   const weekDates = getWeekDates(weekOffset);
-  const weekTasks = calendarTasks.filter((t) => weekDates.includes(t.date));
+  // Expand recurring tasks into virtual instances for the current week
+  const weekTasks = expandRecurringTasks(calendarTasks, weekDates);
   const weekConflicts = conflicts.filter((c) => weekDates.includes(c.date));
   const conflictTaskIds = new Set(
     weekConflicts.flatMap((c) => [c.taskAId, c.taskBId]),
@@ -836,7 +1215,80 @@ export default function CalendarView() {
     (t) => t.confirmed === false,
   ).length;
 
+  // ── Drag handlers ──────────────────────────────────────────────────────────
+  const handleDragStart = useCallback((task: CalendarTask, e: React.MouseEvent) => {
+    if (task.flex !== "flexible") return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const offsetMinutes = Math.max(0, Math.floor(((e.clientY - rect.top) / HOUR_HEIGHT) * 60));
+    const state: DragState = {
+      task, offsetMinutes,
+      ghostDate: task.date, ghostStart: task.startTime, ghostEnd: task.endTime,
+    };
+    dragRef.current = state;
+    setDragState(state);
+    droppedRef.current = false;
+    document.body.style.cursor = "grabbing";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  const handleDragMove = useCallback((e: MouseEvent) => {
+    if (!dragRef.current || !scrollRef.current || !gridRef.current) return;
+    const { task, offsetMinutes } = dragRef.current;
+    const duration = toMins(task.endTime) - toMins(task.startTime);
+
+    const scrollRect = scrollRef.current.getBoundingClientRect();
+    const gridRect   = gridRef.current.getBoundingClientRect();
+    const scrollTop  = scrollRef.current.scrollTop;
+
+    // Time from Y
+    const relY         = e.clientY - scrollRect.top + scrollTop;
+    const rawMinutes   = (relY / HOUR_HEIGHT) * 60 + START_HOUR * 60 - offsetMinutes;
+    const snapped      = Math.round(rawMinutes / 15) * 15;
+    const clampedStart = Math.max(START_HOUR * 60, Math.min(END_HOUR * 60 - duration, snapped));
+    const ghostStart   = minutesToTime(clampedStart);
+    const ghostEnd     = minutesToTime(clampedStart + duration);
+
+    // Date from X
+    const relX     = e.clientX - gridRect.left - TIME_COL_W;
+    const colW     = (gridRect.width - TIME_COL_W) / weekDates.length;
+    const dayIdx   = Math.max(0, Math.min(weekDates.length - 1, Math.floor(relX / colW)));
+    const ghostDate = weekDates[dayIdx];
+
+    const next = { ...dragRef.current, ghostDate, ghostStart, ghostEnd };
+    dragRef.current = next;
+    setDragState(next);
+    droppedRef.current = true;
+  }, [weekDates]);
+
+  const handleDragEnd = useCallback(() => {
+    if (!dragRef.current) return;
+    const { task, ghostDate, ghostStart, ghostEnd } = dragRef.current;
+    if (droppedRef.current &&
+        (ghostDate !== task.date || ghostStart !== task.startTime || ghostEnd !== task.endTime)) {
+      updateCalendarTask(task.id, { date: ghostDate, startTime: ghostStart, endTime: ghostEnd });
+    }
+    dragRef.current = null;
+    setDragState(null);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    // Brief flag so the click that fires on mouseup doesn't open the popover
+    setTimeout(() => { droppedRef.current = false; }, 50);
+  }, [updateCalendarTask]);
+
+  useEffect(() => {
+    if (!dragState) return;
+    window.addEventListener("mousemove", handleDragMove);
+    window.addEventListener("mouseup",   handleDragEnd);
+    return () => {
+      window.removeEventListener("mousemove", handleDragMove);
+      window.removeEventListener("mouseup",   handleDragEnd);
+    };
+  }, [dragState, handleDragMove, handleDragEnd]);
+
   function handleTaskClick(task: CalendarTask, rect: DOMRect) {
+    if (droppedRef.current) return; // suppress click that fires right after drop
     const conflict =
       conflicts.find((c) => c.taskAId === task.id || c.taskBId === task.id) ??
       null;
@@ -858,6 +1310,11 @@ export default function CalendarView() {
     const startTime = yToTimeStr(relY);
     setAddModal({ date, startTime });
   }
+
+  // Scan past tasks on mount and whenever calendar tasks change
+  useEffect(() => {
+    checkPastTasks();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close popover when navigating weeks
   useEffect(() => {
@@ -925,6 +1382,17 @@ export default function CalendarView() {
             </button>
           </div>
 
+          {/* AI Plan button */}
+          <button
+            onClick={() => aiPlanCalendar()}
+            disabled={aiPlanLoading}
+            className="flex items-center gap-1.5 px-3 h-8 bg-violet-700 hover:bg-violet-600 disabled:opacity-50 disabled:cursor-wait text-white text-sm font-medium transition-colors"
+            style={MONO}
+            title="Let K2 intelligently reschedule your flexible tasks"
+          >
+            {aiPlanLoading ? "Planning…" : "AI Plan"}
+          </button>
+
           {/* Add event button */}
           <button
             onClick={() =>
@@ -937,6 +1405,19 @@ export default function CalendarView() {
           </button>
         </div>
       </div>
+
+      {/* ── AI Plan summary banner ──────────────────────────────────────────── */}
+      {aiPlanSummary && !aiPlanLoading && (
+        <div className="flex items-start gap-3 px-4 py-3 bg-violet-950/60 border border-violet-700/40 text-sm text-violet-300" style={MONO}>
+          <span className="shrink-0 text-violet-400">AI</span>
+          <span>{aiPlanSummary}</span>
+        </div>
+      )}
+      {aiPlanLoading && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-violet-950/40 border border-violet-800/30 text-sm text-violet-400" style={MONO}>
+          <span className="animate-pulse">Thinking through your schedule…</span>
+        </div>
+      )}
 
       {/* ── Calendar grid ────────────────────────────────────────────────────── */}
       <div
@@ -993,8 +1474,8 @@ export default function CalendarView() {
         </div>
 
         {/* Scrollable time grid */}
-        <div className="overflow-y-auto" style={{ maxHeight: "68vh" }}>
-          <div className="flex relative" style={{ height: TOTAL_HEIGHT }}>
+        <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: "68vh" }}>
+          <div ref={gridRef} className="flex relative" style={{ height: TOTAL_HEIGHT }}>
             {/* Time-label column */}
             <div
               className="shrink-0 relative z-10 bg-gray-900"
@@ -1002,14 +1483,7 @@ export default function CalendarView() {
             >
               {Array.from({ length: TOTAL_HOURS }, (_, i) => {
                 const h = START_HOUR + i;
-                const label =
-                  h === 0
-                    ? "12am"
-                    : h < 12
-                      ? `${h}am`
-                      : h === 12
-                        ? "12pm"
-                        : `${h - 12}pm`;
+                const label = `${String(h).padStart(2, "0")}:00`;
                 return (
                   <div
                     key={h}
@@ -1074,7 +1548,7 @@ export default function CalendarView() {
                     <UnavailableBlock startTime={`${String(START_HOUR).padStart(2,"0")}:00`} endTime={profile.wakeTime} label="Sleeping" />
                   )}
                   {profile.sleepTime && (
-                    <UnavailableBlock startTime={profile.sleepTime} endTime={`${String(END_HOUR - 1).padStart(2,"0")}:59`} label="Sleeping" />
+                    <UnavailableBlock startTime={profile.sleepTime} endTime={`${String(END_HOUR).padStart(2,"0")}:00`} label="Sleeping" />
                   )}
                   {profile.breakfastTime && (profile.breakfastDurationMinutes ?? 0) > 0 && (
                     <UnavailableBlock startTime={profile.breakfastTime} endTime={addMinutes(profile.breakfastTime, profile.breakfastDurationMinutes)} label="Breakfast" />
@@ -1089,14 +1563,40 @@ export default function CalendarView() {
                     <UnavailableBlock key={b.id} startTime={b.startTime} endTime={b.endTime} label={b.name} />
                   ))}
 
+                  {/* Ghost block shown while dragging */}
+                  {dragState && dragState.ghostDate === date && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: topPx(dragState.ghostStart),
+                        height: heightPx(dragState.ghostStart, dragState.ghostEnd),
+                        left: 2, right: 2,
+                        backgroundColor: `${dragState.task.color}30`,
+                        border: `2px dashed ${dragState.task.color}bb`,
+                        borderRadius: 6,
+                        zIndex: 20,
+                        pointerEvents: "none",
+                      }}
+                    >
+                      <span className="text-[10px] px-1.5 py-0.5 font-semibold"
+                        style={{ color: dragState.task.color, fontFamily: "var(--font-mono)" }}>
+                        {dragState.ghostStart} – {dragState.ghostEnd}
+                      </span>
+                    </div>
+                  )}
+
                   {/* Task blocks */}
                   {laid.map((l) => (
                     <TaskBlock
-                      key={l.task.id}
+                      key={`${l.task.id}-${l.task.date}`}
                       laid={l}
                       isConflict={conflictTaskIds.has(l.task.id)}
                       onClick={(rect) => handleTaskClick(l.task, rect)}
                       onExtend={l.task.flex === "flexible" ? (mins) => extendTask(l.task.id, mins) : undefined}
+                      onDragStart={handleDragStart}
+                      isDragging={dragState?.task.id === l.task.id}
+                      onMarkCompleted={() => markTaskCompleted(l.task.id)}
+                      onMarkMissed={() => markTaskMissed(l.task.id)}
                     />
                   ))}
                 </div>
@@ -1118,9 +1618,15 @@ export default function CalendarView() {
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-red-400 text-xs">⚠</span>
-          <span className="text-sm text-gray-400" style={MONO}>
-            Conflict — click event to resolve
-          </span>
+          <span className="text-sm text-gray-400" style={MONO}>Conflict — click to resolve</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-amber-500 text-xs">~</span>
+          <span className="text-sm text-gray-400" style={MONO}>Conflict accepted</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] px-1 bg-indigo-900/60 text-indigo-300 border border-indigo-700/50" style={MONO}>flex</span>
+          <span className="text-sm text-gray-400" style={MONO}>Flexible · draggable</span>
         </div>
         {[
           { label: "Internship", color: "#10b981" },
@@ -1190,6 +1696,10 @@ export default function CalendarView() {
           onUpdate={(updates) => {
             updateCalendarTask(selectedTask.task.id, updates);
           }}
+          onAcceptConflict={() => acceptConflict(selectedTask.task.id)}
+          onUndoOverride={() => undoConflictOverride(selectedTask.task.id)}
+          onMarkCompleted={() => markTaskCompleted(selectedTask.task.id)}
+          onMarkMissed={() => markTaskMissed(selectedTask.task.id)}
         />
       )}
 

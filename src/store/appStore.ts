@@ -17,13 +17,15 @@ import {
   seedHistory,
   DEFAULT_APPEARANCE,
 } from "@/lib/characterEngine";
-import { mockEmails } from "@/data/mockEmails";
-import { mockCalendarTasks } from "@/data/mockCalendar";
+import { realEmails } from "@/data/realEmails";
+// mockCalendarTasks intentionally removed — calendar starts empty
 import { rankOpportunities } from "@/lib/opportunityRanking";
 import { detectConflicts } from "@/lib/conflictDetection";
 import { deriveOpportunitiesFromEmails } from "@/lib/emailParser";
 import { generateDailyStrategy } from "@/lib/strategyEngine";
-import { getFixedEventsForDay, getAvailableTimeBlocks, extendTaskAndReflowDay, reflowCalendar } from "@/lib/dayPlanner";
+import { getFixedEventsForDay, getAvailableTimeBlocks, getBlockedIntervalsForDay, extendTaskAndReflowDay, reflowCalendar, isFixed, timeToMinutes, minutesToTime } from "@/lib/dayPlanner";
+import { isOpportunityExpired } from "@/lib/timeParser";
+import { computeTaskXP } from "@/lib/xpEngine";
 
 const DEFAULT_PROFILE: UserProfile = {
   name: "",
@@ -92,7 +94,13 @@ interface AppStore extends AppState {
   completeOnboarding: (profile: UserProfile) => void;
   updateProfile: (profile: Partial<UserProfile>) => void;
   setOpportunityInterest: (id: string, interested: boolean | null) => void;
-  addOpportunityToCalendar: (opportunityId: string, opts?: { endTime?: string; durationMinutes?: number; title?: string }) => void;
+  addOpportunityToCalendar: (opportunityId: string, opts?: {
+    startTime?: string;        // override computed start (from ProposalModal)
+    endTime?: string;
+    durationMinutes?: number;
+    title?: string;
+    confirmed?: boolean;       // true = user already confirmed in ProposalModal
+  }) => void;
   extendTask: (taskId: string, extraMinutes: number) => void;
   confirmCalendarTask: (taskId: string) => void;
   deleteCalendarTask: (taskId: string) => void;
@@ -107,22 +115,40 @@ interface AppStore extends AppState {
   refreshCharacterStats: () => void;
   updateCharacterAppearance: (appearance: CharacterAppearance) => void;
   addGoal: (text: string) => void;
-  updateCalendarTask: (taskId: string, updates: Partial<Pick<import('@/types').CalendarTask, 'title' | 'startTime' | 'endTime'>>) => void;
+  updateCalendarTask: (taskId: string, updates: Partial<Pick<import('@/types').CalendarTask, 'title' | 'startTime' | 'endTime' | 'date' | 'description'>>) => void;
+  /** Mark a soft conflict as accepted — task gets confirmed_with_override status. */
+  acceptConflict: (taskId: string) => void;
+  /** Undo a previously accepted conflict override — re-evaluates conflicts. */
+  undoConflictOverride: (taskId: string) => void;
+  /** Mark a past confirmed task as completed — awards XP. */
+  markTaskCompleted: (taskId: string) => void;
+  /** Mark a past confirmed task as missed — no XP. */
+  markTaskMissed: (taskId: string) => void;
+  /** Scan confirmed tasks whose end time has passed and set awaiting_confirmation. */
+  checkPastTasks: () => void;
   sendChatMessage: (content: string) => Promise<void>;
   clearChat: () => void;
+  aiPlanLoading: boolean;
+  aiPlanSummary: string;
+  aiPlanCalendar: () => Promise<void>;
+  rerankLoading: boolean;
+  rerankWithK2: () => Promise<void>;
+  reloadOpportunities: () => void;
+  /** Re-rank opportunities using current profile (alias for reloadOpportunities). */
+  rerankOpportunities: () => void;
 }
 
 export const useAppStore = create<AppStore>()(
   persist(
     (set, get) => ({
       profile: DEFAULT_PROFILE,
-      emails: mockEmails,
+      emails: realEmails,
       opportunities: rankOpportunities(
-        deriveOpportunitiesFromEmails(mockEmails),
+        deriveOpportunitiesFromEmails(realEmails),
         DEFAULT_PROFILE,
       ),
-      calendarTasks: mockCalendarTasks,
-      conflicts: detectConflicts(mockCalendarTasks, DEFAULT_PROFILE),
+      calendarTasks: [],
+      conflicts: [],
       goals: DEFAULT_GOALS,
       activeTab: "dashboard",
       onboardingComplete: false,
@@ -131,6 +157,9 @@ export const useAppStore = create<AppStore>()(
       dailyStrategy: null,
       character: null,
       chatMessages: [],
+      aiPlanLoading: false,
+      aiPlanSummary: "",
+      rerankLoading: false,
 
       setActiveTab: (tab) => set({ activeTab: tab }),
 
@@ -175,7 +204,7 @@ export const useAppStore = create<AppStore>()(
         if (!char) return;
         const tasks = get().calendarTasks;
         const stats = computeStats(tasks);
-        const level = getLevel(stats);
+        const level = getLevel(stats, char.xp);
         const archetype = getArchetype(stats);
         const signals = detectSignals(stats);
         const today = new Date().toISOString().slice(0, 10);
@@ -314,10 +343,23 @@ Format your response as:
 
       updateProfile: (partial) => {
         const profile = { ...get().profile, ...partial };
-        const rankedOpps = rankOpportunities(get().opportunities, profile);
+        // Re-derive opportunities from source emails so scores always reflect the
+        // latest profile rather than potentially stale AI-modified scores.
+        const { emails, opportunities: existing } = get();
+        const fresh = rankOpportunities(deriveOpportunitiesFromEmails(emails), profile);
+        const existingMap = new Map(existing.map((o) => [o.id, o]));
+        const rankedOpps = fresh.map((opp) => {
+          const prev = existingMap.get(opp.id);
+          if (!prev) return opp;
+          return { ...opp, interested: prev.interested, addedToCalendar: prev.addedToCalendar };
+        });
         const strategy = generateDailyStrategy(rankedOpps, profile);
         const reflowed = reflowCalendar(get().calendarTasks, profile);
         set({ profile, opportunities: rankedOpps, dailyStrategy: strategy, calendarTasks: reflowed, conflicts: detectConflicts(reflowed, profile) });
+        // Fire AI rerank in the background so semantic understanding catches what
+        // the heuristic misses (e.g. "English teacher" has no hardcoded keyword group).
+        const hasProfile = !!(profile.careerGoals || profile.professionalInterests || profile.targetIndustries);
+        if (hasProfile) get().rerankWithK2();
       },
 
       setOpportunityInterest: (id, interested) => {
@@ -331,13 +373,9 @@ Format your response as:
       addOpportunityToCalendar: (opportunityId, opts) => {
         const opp = get().opportunities.find((o) => o.id === opportunityId);
         if (!opp || !opp.deadline) return;
+        if (isOpportunityExpired(opp)) return; // refuse to schedule past-deadline items
         const profile = get().profile;
         const taskTitle = opts?.title ?? opp.title;
-
-        // Categories whose events happen at a fixed real-world time
-        const FIXED_TIME_CATEGORIES = new Set([
-          'networking', 'professional_event', 'classes', 'entertainment',
-        ]);
 
         const typeMap: Record<string, CalendarTask['type']> = {
           internship_application: 'internship_application',
@@ -364,39 +402,61 @@ Format your response as:
         // opts can override duration or end time (from the schedule modal)
         const durationMin = opts?.durationMinutes ?? Math.round(opp.estimatedHours * 60);
 
+        // calcEnd: safely compute end time, capping at 23:59 to avoid midnight overflow.
         const calcEnd = (start: string, mins: number): string => {
-          const [sh, sm] = start.split(':').map(Number);
-          const total = sh * 60 + sm + mins;
-          return `${String(Math.min(Math.floor(total / 60), 23)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+          const total = Math.min(timeToMinutes(start) + mins, 23 * 60 + 59);
+          return minutesToTime(total);
         };
 
         let startTime: string;
         let endTime: string;
         let taskFlex: CalendarTask['flex'];
 
-        if (opp.eventTime) {
-          // ── Fixed-time event: email contains a real clock time ──────────────
-          startTime = opp.eventTime;
-          endTime = opts?.endTime ?? opp.eventEndTime ?? calcEnd(startTime, durationMin);
-          taskFlex = 'fixed';
-        } else if (!FIXED_TIME_CATEGORIES.has(opp.category)) {
-          // ── Flexible task: find the first open slot on the deadline day ─────
-          const fixedEvents = getFixedEventsForDay(get().calendarTasks, opp.deadline);
-          const blocks = getAvailableTimeBlocks(fixedEvents, profile, opp.deadline);
-          const slot = blocks.find((b) => b.durationMinutes >= durationMin);
-          if (slot) {
-            startTime = slot.startTime;
-            endTime = calcEnd(startTime, durationMin);
+        if (opp.flexibility !== 'fixed') {
+          // ── Flexible: use caller-supplied times (from ProposalModal) or compute ─
+          if (opts?.startTime) {
+            startTime = opts.startTime;
+            endTime   = opts.endTime ?? calcEnd(startTime, durationMin);
           } else {
-            startTime = profile.preferredStartTime || '09:00';
-            endTime = calcEnd(startTime, durationMin);
+            const fixedEvents = getFixedEventsForDay(get().calendarTasks, opp.deadline);
+            const allBlocks   = getAvailableTimeBlocks(fixedEvents, profile, opp.deadline);
+            const cutoffMins  = (opp.itemType === 'deadline' && opp.dueAt)
+              ? timeToMinutes(opp.dueAt)
+              : timeToMinutes(profile.preferredEndTime || '22:00');
+            const trimmedBlocks = allBlocks
+              .map((b) => {
+                const bEnd = Math.min(timeToMinutes(b.endTime), cutoffMins);
+                const dur  = bEnd - timeToMinutes(b.startTime);
+                return { ...b, endTime: minutesToTime(bEnd), durationMinutes: dur };
+              })
+              .filter((b) => b.durationMinutes >= 30);
+            const slot = trimmedBlocks.find((b) => b.durationMinutes >= durationMin)
+              ?? trimmedBlocks.at(-1);
+            if (slot) {
+              startTime = slot.startTime;
+              endTime   = calcEnd(startTime, Math.min(durationMin, slot.durationMinutes));
+            } else {
+              startTime = profile.preferredStartTime || '09:00';
+              endTime   = calcEnd(startTime, durationMin);
+            }
           }
           taskFlex = 'flexible';
         } else {
-          // ── Fixed-time category but no parseable clock time ──────────────────
-          startTime = profile.preferredStartTime || '09:00';
-          endTime = opts?.endTime ?? calcEnd(startTime, durationMin);
+          // ── Fixed: anchor at the event's explicit time or preferred start ─────
+          if (opp.eventTime) {
+            startTime = opp.eventTime;
+            endTime   = opts?.endTime ?? opp.eventEndTime ?? calcEnd(startTime, durationMin);
+          } else {
+            startTime = opts?.startTime ?? profile.preferredStartTime ?? '09:00';
+            endTime   = opts?.endTime   ?? calcEnd(startTime, durationMin);
+          }
           taskFlex = 'fixed';
+        }
+
+        // Safety: reject any interval where end ≤ start (can't happen with correct calcEnd,
+        // but defensive in case opts provides a bad endTime from the modal)
+        if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+          endTime = calcEnd(startTime, Math.max(durationMin, 30));
         }
 
         const newTask: CalendarTask = {
@@ -409,7 +469,8 @@ Format your response as:
           date: opp.deadline,
           opportunityId,
           color: colorMap[type] || '#6b7280',
-          confirmed: false,
+          confirmed: opts?.confirmed ?? false,
+          status: opts?.confirmed ? 'confirmed' : 'proposed',
         };
 
         const newTasks = [...get().calendarTasks, newTask];
@@ -489,6 +550,99 @@ Format your response as:
               )
             : state.opportunities,
         }));
+      },
+
+      acceptConflict: (taskId) => {
+        // Mark the task as override-accepted; remove its conflict entries
+        const newTasks = get().calendarTasks.map((t) =>
+          t.id === taskId
+            ? { ...t, conflictOverride: true, status: 'confirmed_with_override' as import('@/types').TaskStatus, confirmed: true }
+            : t,
+        );
+        const newConflicts = get().conflicts.filter(
+          (c) => c.taskAId !== taskId && c.taskBId !== taskId,
+        );
+        set({ calendarTasks: newTasks, conflicts: newConflicts });
+      },
+
+      undoConflictOverride: (taskId) => {
+        const newTasks = get().calendarTasks.map((t) =>
+          t.id === taskId
+            ? { ...t, conflictOverride: false, status: 'confirmed' as import('@/types').TaskStatus }
+            : t,
+        );
+        set({
+          calendarTasks: newTasks,
+          conflicts: detectConflicts(newTasks, get().profile),
+        });
+      },
+
+      markTaskCompleted: (taskId) => {
+        const task = get().calendarTasks.find((t) => t.id === taskId);
+        if (!task || task.xpAwarded) return;
+        const xpGain = computeTaskXP(task);
+        const newTasks = get().calendarTasks.map((t) =>
+          t.id === taskId
+            ? { ...t, completionStatus: 'completed' as import('@/types').CompletionStatus, xpAwarded: true, confirmed: true }
+            : t,
+        );
+        set({ calendarTasks: newTasks });
+
+        const char = get().character;
+        if (char) {
+          const newXp = (char.xp ?? 0) + xpGain;
+          const stats = computeStats(newTasks);
+          const level = getLevel(stats, newXp);
+          const archetype = getArchetype(stats);
+          const signals = detectSignals(stats);
+          const today = new Date().toISOString().slice(0, 10);
+          const lastSnap = char.statHistory[char.statHistory.length - 1];
+          const statHistory =
+            lastSnap?.date === today
+              ? [...char.statHistory.slice(0, -1), { date: today, stats }]
+              : [...char.statHistory.slice(-29), { date: today, stats }];
+          const newEntry: import('@/types').XPLogEntry = {
+            taskTitle: task.title,
+            taskType: task.type,
+            xp: xpGain,
+            date: today,
+          };
+          const xpLog = [newEntry, ...(char.xpLog ?? [])].slice(0, 10);
+          set({ character: { ...char, xp: newXp, xpLog, stats, level, archetype, signals, statHistory } });
+        }
+      },
+
+      markTaskMissed: (taskId) => {
+        const newTasks = get().calendarTasks.map((t) =>
+          t.id === taskId
+            ? { ...t, completionStatus: 'missed' as import('@/types').CompletionStatus }
+            : t,
+        );
+        set({ calendarTasks: newTasks });
+        get().refreshCharacterStats();
+      },
+
+      checkPastTasks: () => {
+        const now = new Date();
+        const nowDateStr = now.toISOString().slice(0, 10);
+        const nowMins = now.getHours() * 60 + now.getMinutes();
+        const toM = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+
+        let changed = false;
+        const newTasks = get().calendarTasks.map((t) => {
+          // Only scan confirmed tasks without a final completionStatus
+          if (!t.confirmed) return t;
+          if (t.completionStatus === 'completed' || t.completionStatus === 'missed') return t;
+          if (t.completionStatus === 'awaiting_confirmation') return t;
+          // Is the event fully in the past?
+          const isPast =
+            t.date < nowDateStr ||
+            (t.date === nowDateStr && toM(t.endTime) < nowMins);
+          if (!isPast) return t;
+          changed = true;
+          return { ...t, completionStatus: 'awaiting_confirmation' as import('@/types').CompletionStatus };
+        });
+        if (changed) set({ calendarTasks: newTasks });
       },
 
       confirmGoal: (goalId, confirmed) => {
@@ -583,6 +737,19 @@ Example output format:
 - [Task B] → moderate impact because [specific reason]
 If you skip [task], the consequence is [specific loss].
 Recommendation: [one clear action]"
+
+EMAIL REASONING RULES — apply these whenever discussing, summarizing, or acting on emails:
+
+1. Prefer future-facing emails over past ones. Prioritize upcoming meetings, deadlines, follow-ups, events, pending approvals, and incomplete tasks. Deprioritize resolved conversations unless needed for context.
+2. Treat time carefully. Use the email's actual timestamp compared to today's date. Distinguish clearly between past, today, upcoming, overdue, and unscheduled. Never assume relative words like "tomorrow" or "next Friday" without grounding them in the sent date.
+3. Prefer actionable threads. Surface emails requiring a reply, decision, attendance, payment, confirmation, or document submission. Ignore newsletters, promotions, and FYI emails unless explicitly requested.
+4. Be conservative. Never send, archive, delete, label, or draft a reply unless explicitly asked. Default to summarizing and recommending actions first.
+5. Use the latest message in a thread. Do not base conclusions on an older message if a newer one changes the plan.
+6. Identify open vs. closed threads. Open = pending task, unresolved question, future event, or expected follow-up. Closed = clearly resolved.
+7. Extract deadlines and commitments. For each important email identify: what is happening, when it is happening, whether action is needed, and the recommended next step.
+8. When summarizing, organize by urgency: (1) urgent and upcoming, (2) upcoming but not urgent, (3) waiting / no action needed yet, (4) past / resolved.
+9. Be explicit about uncertainty. If a date, owner, or next action is unclear, say so — do not guess.
+10. Never invent recipients, dates, agreements, or attachments. Never assume an email is unimportant just because it is short.
 
 SCHEDULING RULES (hard constraints — follow exactly):
 
@@ -709,14 +876,317 @@ HARD RULE: Never mix modes in a single response. Pick one and follow it complete
         }
       },
 
+      aiPlanCalendar: async () => {
+        const { profile, calendarTasks, opportunities } = get();
+        set({ aiPlanLoading: true, aiPlanSummary: "" });
+
+        try {
+          const today = new Date().toISOString().slice(0, 10);
+          // Plan over the next 14 days
+          const horizon = Array.from({ length: 14 }, (_, i) => {
+            const d = new Date(today + 'T00:00:00');
+            d.setDate(d.getDate() + i);
+            return d.toISOString().slice(0, 10);
+          });
+
+          const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+          const mealsText = [
+            profile.wakeTime ? `Wake: ${profile.wakeTime}` : null,
+            profile.sleepTime ? `Sleep: ${profile.sleepTime}` : null,
+            profile.breakfastTime && profile.breakfastDurationMinutes > 0
+              ? `Breakfast: ${profile.breakfastTime} (${profile.breakfastDurationMinutes}min)` : null,
+            profile.lunchStart && profile.lunchDurationMinutes > 0
+              ? `Lunch: ${profile.lunchStart} (${profile.lunchDurationMinutes}min)` : null,
+            profile.dinnerTime && profile.dinnerDurationMinutes > 0
+              ? `Dinner: ${profile.dinnerTime} (${profile.dinnerDurationMinutes}min)` : null,
+          ].filter(Boolean).join(' | ');
+
+          const blocksText = (profile.scheduleBlocks ?? []).length > 0
+            ? (profile.scheduleBlocks ?? []).map(b => `  - ${b.name}: ${b.startTime}–${b.endTime} (${b.recurrence})`).join('\n')
+            : '  none';
+
+          const doNotText = profile.doNotScheduleDays?.length
+            ? profile.doNotScheduleDays.join(', ') : 'none';
+
+          const budgetMap: Record<string, string> = {
+            light: '4 hours/day', moderate: '6 hours/day',
+            heavy: '8 hours/day', insane: '16 hours/day',
+          };
+
+          // Fixed events in the planning window
+          const fixedTasks = calendarTasks.filter(
+            t => isFixed(t) && horizon.includes(t.date)
+          ).sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+
+          const fixedText = fixedTasks.length > 0
+            ? fixedTasks.map(t => {
+                const dow = DAYS[new Date(t.date + 'T00:00:00').getDay()];
+                return `  - ${t.date} ${dow}: ${t.title} | ${t.startTime}–${t.endTime} | type=${t.type}`;
+              }).join('\n')
+            : '  none';
+
+          // Flexible tasks to schedule (only tasks in horizon or unscheduled)
+          const flexTasks = calendarTasks.filter(t => !isFixed(t));
+
+          // Include pending opportunities that haven't been added yet (interested but not on calendar)
+          const pendingOpps = opportunities.filter(
+            o => o.interested === true && !o.addedToCalendar && o.deadline
+          );
+
+          // ── Pre-compute constraint violations for each flexible task ──────────
+          function computeViolations(
+            t: CalendarTask,
+            deadline: string | null,
+            dueAt: string | undefined,
+          ): string[] {
+            const violations: string[] = [];
+            const taskStartM = timeToMinutes(t.startTime);
+            const taskEndM   = timeToMinutes(t.endTime);
+
+            // 1. After-deadline check
+            if (deadline) {
+              if (t.date > deadline) {
+                violations.push(`after_deadline (placed ${t.date} but deadline is ${deadline})`);
+              } else if (t.date === deadline && dueAt && taskEndM > timeToMinutes(dueAt)) {
+                violations.push(`after_deadline (ends ${t.endTime} but dueAt is ${dueAt})`);
+              }
+            }
+
+            // 2. Overlap with fixed events on the same day
+            const fixedOnDay = getFixedEventsForDay(calendarTasks, t.date);
+            for (const f of fixedOnDay) {
+              const fStart = timeToMinutes(f.startTime);
+              const fEnd   = timeToMinutes(f.endTime);
+              if (fStart < taskEndM && fEnd > taskStartM) {
+                violations.push(`overlaps_fixed_event "${f.title}" (${f.startTime}–${f.endTime})`);
+              }
+            }
+
+            // 3. Overlap with blocked intervals (sleep, meals, schedule blocks)
+            const blocked = getBlockedIntervalsForDay(profile, t.date);
+            for (const b of blocked) {
+              if (b.start < taskEndM && b.end > taskStartM) {
+                violations.push(`in_blocked_time "${b.label}" (${minutesToTime(b.start)}–${minutesToTime(b.end)})`);
+                break; // one blocked-time violation per task is enough
+              }
+            }
+
+            return violations;
+          }
+
+          const flexText = flexTasks.length > 0
+            ? flexTasks.map(t => {
+                const opp      = opportunities.find(o => o.id === t.opportunityId);
+                const deadline = opp?.deadline ?? null;
+                const dueAt    = opp?.dueAt;
+                const durationMin = Math.round(
+                  (new Date(`1970-01-01T${t.endTime}`).getTime() -
+                   new Date(`1970-01-01T${t.startTime}`).getTime()) / 60000,
+                );
+                const violations = computeViolations(t, deadline, dueAt);
+                const violationStr = violations.length > 0
+                  ? ` | ⚠ VIOLATIONS: ${violations.join('; ')}`
+                  : ' | placement: OK';
+                const deadlineStr = deadline
+                  ? `${deadline}${dueAt ? ` ${dueAt}` : ''}`
+                  : 'none';
+                return (
+                  `  - id=${t.id} | ${t.title} | ${durationMin}min` +
+                  ` | deadline=${deadlineStr}` +
+                  ` | currentPlacement: ${t.date} ${t.startTime}–${t.endTime}` +
+                  `${violationStr}` +
+                  ` | type=${t.type} | color=${t.color}` +
+                  (t.opportunityId ? ` | opportunityId=${t.opportunityId}` : '')
+                );
+              }).join('\n')
+            : '  none';
+
+          const pendingText = pendingOpps.length > 0
+            ? pendingOpps.map(o =>
+                `  - PENDING | ${o.title} | ${Math.round(o.estimatedHours * 60)}min | deadline=${o.deadline} | priority=${o.priority}/10`
+              ).join('\n')
+            : '  none';
+
+          const userMessage = `Today is ${today} (${DAYS[new Date(today + 'T00:00:00').getDay()]}).
+Planning horizon: ${today} through ${horizon[horizon.length - 1]}.
+
+## User Profile
+- ${mealsText}
+- Schedule intensity: ${profile.scheduleIntensity} (workload budget: ${budgetMap[profile.scheduleIntensity] ?? '6 hours/day'})
+- Preferred work window: ${profile.preferredStartTime ?? '09:00'} – ${profile.preferredEndTime ?? '22:00'}
+- Do not schedule on: ${doNotText}
+
+## Additional Blocked Time (Schedule Blocks)
+${blocksText}
+
+## Fixed Events (DO NOT MOVE OR SPLIT)
+${fixedText}
+
+## Flexible Tasks — current placement shown, repair if VIOLATIONS are present
+${flexText}
+
+## Pending Opportunities (interested but not yet on calendar — you may optionally pre-schedule these as prospect tasks)
+${pendingText}
+
+## Instructions
+Apply all planning rules from your system prompt. Produce the optimal schedule for the flexible tasks above.
+Return ONLY the JSON object — no markdown, no explanation.`;
+
+          const res = await fetch('/api/ai/plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userMessage }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json();
+            console.error('AI plan error:', err);
+            set({ aiPlanLoading: false, aiPlanSummary: 'Planning failed. Try again.' });
+            return;
+          }
+
+          const plan = await res.json();
+
+          console.log('[aiPlan] raw AI response:', JSON.stringify({
+            scheduledCount: plan.scheduledTasks?.length ?? 0,
+            unscheduledCount: plan.unscheduled?.length ?? 0,
+            warnings: plan.warnings,
+            summary: plan.summary,
+            tasks: plan.scheduledTasks?.map((t: { id: string; title: string; date: string; startTime: string; endTime: string; status: string }) => `${t.id} → ${t.date} ${t.startTime}–${t.endTime} [${t.status}]`),
+          }, null, 2));
+
+          if (plan.scheduledTasks && Array.isArray(plan.scheduledTasks)) {
+            const fixed = calendarTasks.filter(t => isFixed(t));
+
+            // Build a map of original flexible tasks so we can merge properties back.
+            // The AI schema omits confirmed, opportunityId, completionStatus, etc. —
+            // stripping them breaks violation detection on subsequent runs (no opportunityId
+            // → deadline lookup fails → after_deadline never flagged again).
+            const originalFlexMap = new Map(
+              calendarTasks.filter(t => !isFixed(t)).map(t => [t.id, t]),
+            );
+
+            const plannedIds = new Set<string>();
+            const mergedFlexTasks: CalendarTask[] = (plan.scheduledTasks as Partial<CalendarTask>[]).map((aiTask) => {
+              const id = aiTask.id!;
+              plannedIds.add(id);
+              const original = originalFlexMap.get(id);
+              return {
+                // Base: all original properties (confirmed, opportunityId, completionStatus, etc.)
+                ...(original ?? {}),
+                // Override: AI's new date/startTime/endTime/type/color/status
+                ...aiTask,
+                // Explicitly re-stamp critical fields the AI schema doesn't carry
+                confirmed:        original?.confirmed        ?? false,
+                opportunityId:    original?.opportunityId    ?? (aiTask as CalendarTask).opportunityId,
+                completionStatus: original?.completionStatus,
+                xpAwarded:        original?.xpAwarded,
+              } as CalendarTask;
+            });
+
+            // Safety net: retain flexible tasks the AI silently omitted rather than
+            // dropping them. They keep their current placement and will be flagged
+            // again on the next violation scan.
+            const retainedFlexTasks = calendarTasks.filter(
+              t => !isFixed(t) && !plannedIds.has(t.id),
+            );
+            if (retainedFlexTasks.length > 0) {
+              console.warn('[aiPlan] AI omitted these flexible tasks — retained in place:',
+                retainedFlexTasks.map(t => t.title));
+            }
+
+            const newTasks = [...fixed, ...mergedFlexTasks, ...retainedFlexTasks];
+            set({
+              calendarTasks: newTasks,
+              conflicts: detectConflicts(newTasks, profile),
+              aiPlanSummary: plan.summary ?? '',
+            });
+          }
+        } catch (e) {
+          console.error('aiPlanCalendar error:', e);
+          set({ aiPlanSummary: 'Could not connect to AI planner.' });
+        } finally {
+          set({ aiPlanLoading: false });
+        }
+      },
+
+      rerankOpportunities: () => get().reloadOpportunities(),
+
+      reloadOpportunities: () => {
+        const { emails, profile, opportunities: existing } = get();
+        const fresh = rankOpportunities(deriveOpportunitiesFromEmails(emails), profile);
+        // Preserve user decisions (interested, addedToCalendar) for opportunities
+        // that survived deduplication with the same canonical id.
+        const existingMap = new Map(existing.map((o) => [o.id, o]));
+        const merged = fresh.map((opp) => {
+          const prev = existingMap.get(opp.id);
+          if (!prev) return opp;
+          return {
+            ...opp,
+            interested:      prev.interested,
+            addedToCalendar: prev.addedToCalendar,
+          };
+        });
+        set({ opportunities: merged });
+      },
+
+      rerankWithK2: async () => {
+        const { opportunities, profile } = get();
+        set({ rerankLoading: true });
+        const topN = 15;
+        try {
+          const res = await fetch('/api/ai/rerank', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              opportunities: opportunities.slice(0, topN).map(o => ({
+                id: o.id,
+                title: o.title,
+                description: o.description,
+                category: o.category,
+                deadline: o.deadline,
+                priority: o.priority,
+                priorityReason: o.priorityReason,
+              })),
+              profile: {
+                careerGoals: profile.careerGoals,
+                professionalInterests: profile.professionalInterests,
+                targetIndustries: profile.targetIndustries,
+                experienceLevel: profile.experienceLevel,
+                activelyLooking: profile.activelyLooking,
+              },
+              topN,
+            }),
+          });
+          if (!res.ok) return;
+          const { reranked } = await res.json() as {
+            reranked: Array<{ id: string; aiPriority: number; aiReason: string }>;
+          };
+          const aiMap = new Map(reranked.map(r => [r.id, r]));
+          // Store aiRelevanceScore per-opp, then re-run rankOpportunities so the
+          // 4-layer weights (with AI) are applied and finalScore is recomputed cleanly.
+          const withAIScores = opportunities.map(o => {
+            const ai = aiMap.get(o.id);
+            if (!ai) return o;
+            return { ...o, aiRelevanceScore: ai.aiPriority, aiExplanation: ai.aiReason };
+          });
+          set({ opportunities: rankOpportunities(withAIScores, profile) });
+        } catch (e) {
+          console.error('rerankWithK2 error:', e);
+        } finally {
+          set({ rerankLoading: false });
+        }
+      },
+
       resetStore: () => {
         set({
           profile: DEFAULT_PROFILE,
           goals: DEFAULT_GOALS,
-          calendarTasks: mockCalendarTasks,
-          conflicts: detectConflicts(mockCalendarTasks, DEFAULT_PROFILE),
+          calendarTasks: [],
+          conflicts: [],
           opportunities: rankOpportunities(
-            deriveOpportunitiesFromEmails(mockEmails),
+            deriveOpportunitiesFromEmails(realEmails),
             DEFAULT_PROFILE,
           ),
           onboardingComplete: false,
@@ -758,6 +1228,13 @@ HARD RULE: Never mix modes in a single response. Pick one and follow it complete
           ...((persisted as Partial<AppState>).profile ?? {}),
         },
       }),
+      // After hydration the stored profile is available — re-rank with it so
+      // opportunities are never scored against DEFAULT_PROFILE on page load.
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.reloadOpportunities();
+        }
+      },
     },
   ),
 );

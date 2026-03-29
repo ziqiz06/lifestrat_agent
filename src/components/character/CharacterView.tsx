@@ -492,8 +492,10 @@ export default function CharacterView() {
   if (!character) return <CharacterSetup />;
 
   const palette = getArchetypePalette(character.archetype);
-  const lvlProgress = getLevelProgress(character.stats);
+  const lvlProgress = getLevelProgress(character.stats, character.xp);
   const suggestions = getSuggestions(character);
+  const totalXp = character.xp ?? 0;
+  const xpMode = totalXp > 0;
   const stats = character.stats;
 
   // Compute stat deltas vs last snapshot
@@ -583,7 +585,7 @@ export default function CharacterView() {
                   Progress to Lv {character.level + 1}
                 </span>
                 <span style={MONO} className="text-xs text-gray-500 tabular-nums">
-                  {lvlProgress.current} / {lvlProgress.needed} xp
+                  {xpMode ? `${totalXp} total XP · ` : ''}{lvlProgress.current} / {lvlProgress.needed} xp
                 </span>
               </div>
               <div className="h-2 bg-gray-800 overflow-hidden border border-gray-700/50">
@@ -885,6 +887,33 @@ export default function CharacterView() {
         </div>
       </div>
 
+      {/* ── Recent XP Gains ────────────────────────────────────────────────── */}
+      {(character.xpLog ?? []).length > 0 && (
+        <section className="bg-gray-800/80 p-5" style={{ border: `1px solid ${palette.glow}55` }}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 style={MONO} className="text-lg font-bold uppercase tracking-wider text-white">Recent XP Gains</h2>
+            <span style={MONO} className="text-xs text-gray-500">{totalXp} total XP</span>
+          </div>
+          <div className="space-y-2">
+            {(character.xpLog ?? []).map((entry, i) => (
+              <div key={i} className="flex items-center gap-3 py-1.5 border-b border-gray-700/30 last:border-0">
+                <div
+                  className="w-8 h-8 flex items-center justify-center text-sm font-bold shrink-0"
+                  style={{ backgroundColor: `${palette.glow}20`, color: palette.glow, border: `1px solid ${palette.glow}30` }}
+                >
+                  +{entry.xp}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p style={MONO} className="text-sm text-gray-200 truncate">{entry.taskTitle}</p>
+                  <p style={MONO} className="text-xs text-gray-600">{entry.taskType.replace(/_/g, ' ')} · {entry.date}</p>
+                </div>
+                <span style={MONO} className="text-xs text-green-500 shrink-0">✓</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* ── Trend graph ────────────────────────────────────────────────────── */}
       <section className="bg-gray-800/80 p-5" style={{ border: `1px solid ${palette.glow}55` }}>
         <div className="flex items-center justify-between mb-4">
@@ -925,11 +954,12 @@ export default function CharacterView() {
           How this works
         </h2>
         <p style={MONO} className="text-sm text-gray-500 leading-relaxed">
-          {character.name}&apos;s stats are derived from the last 30 days of your
-          calendar activity — weighted toward what&apos;s recent. Stats drift gently
-          when an area goes quiet and recover quickly when attention returns.
-          Every choice of where to spend time is a tradeoff, not a mistake.
-          There are no failure states here, only different kinds of seasons.
+          {character.name}&apos;s stats are derived from completed calendar events —
+          weighted toward what&apos;s recent. XP is earned only when you mark an event as
+          done; missed events award no XP. Stats drift gently when an area goes quiet
+          and recover quickly when attention returns. Every choice of where to spend time
+          is a tradeoff, not a mistake. There are no failure states here, only different
+          kinds of seasons.
         </p>
       </div>
     </div>
