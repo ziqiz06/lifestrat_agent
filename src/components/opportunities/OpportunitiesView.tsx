@@ -764,6 +764,11 @@ export default function OpportunitiesView() {
         <div className="shrink-0 flex flex-col items-end gap-3">
           <PixelSprite palette={palette} scale={10} pose="ponder" />
           <div className="flex gap-2 flex-wrap justify-end">
+            <button onClick={handleConnectGmail} disabled={importing}
+              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-gray-300 text-sm border border-gray-600 transition-colors"
+              style={MONO}>
+              {importing ? importStep || "Syncing…" : "↺ Sync Gmail"}
+            </button>
             <button onClick={() => rerankWithK2()} disabled={rerankLoading}
               className="px-3 py-1.5 bg-indigo-800 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-wait text-white text-sm border border-indigo-600 transition-colors"
               style={MONO}>
