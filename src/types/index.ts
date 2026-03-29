@@ -15,6 +15,7 @@ export interface UserProfile {
   scheduleIntensity: "light" | "moderate" | "intense";
   doNotScheduleDays: string[]; // e.g. ["Saturday", "Sunday"]
   doNotScheduleWindows: string; // e.g. "After 9pm"
+  timezone: string; // IANA timezone string, e.g. "America/New_York"
   completed: boolean;
 }
 

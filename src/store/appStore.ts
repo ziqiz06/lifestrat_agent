@@ -31,6 +31,7 @@ const DEFAULT_PROFILE: UserProfile = {
   scheduleIntensity: "moderate",
   doNotScheduleDays: [],
   doNotScheduleWindows: "",
+  timezone: "",
   completed: false,
 };
 
