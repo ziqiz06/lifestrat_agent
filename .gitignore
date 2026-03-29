@@ -4,3 +4,6 @@ node_modules/
 .next/
 out/
 *.log
+
+token.json
+client_secret*.json

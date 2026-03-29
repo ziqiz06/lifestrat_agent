@@ -68,16 +68,7 @@ export default function Home() {
         setUserId(session.user.id);
         setUserEmail(session.user.email ?? null);
 
-        // After Gmail OAuth callback, dispatch event so OpportunitiesView can import
-        const params = new URLSearchParams(window.location.search);
-        if (params.get("gmail") === "connected" && session.provider_token) {
-          window.history.replaceState({}, "", "/");
-          window.dispatchEvent(
-            new CustomEvent("gmail:connected", {
-              detail: { providerToken: session.provider_token, userId: session.user.id },
-            }),
-          );
-        }
+        // Gmail param check handled in onAuthStateChange below (provider_token more reliable there)
 
         // Transition immediately based on local cache, then sync from Supabase
         const localState = useAppStore.getState();
@@ -99,11 +90,22 @@ export default function Home() {
 
     init();
 
-    // Auth state listener — only used for token refresh, not login/logout
-    // Login is handled by onAuthenticated, logout by handleSignOut
+    // Auth state listener — handles Gmail OAuth callback (provider_token is reliable here)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {});
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.provider_token) {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('gmail') === 'connected') {
+          window.history.replaceState({}, '', '/');
+          window.dispatchEvent(
+            new CustomEvent('gmail:connected', {
+              detail: { providerToken: session.provider_token, userId: session.user.id },
+            }),
+          );
+        }
+      }
+    });
 
     return () => subscription.unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps

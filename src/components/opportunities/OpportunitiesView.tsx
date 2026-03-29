@@ -662,11 +662,13 @@ export default function OpportunitiesView() {
   const handleConnectGmail = async () => {
     const { createClient } = await import("@/utils/supabase/client");
     const supabase = createClient();
+    // Encode the next URL so the ?gmail=connected param survives the redirect chain
+    const next = encodeURIComponent('/?gmail=connected');
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         scopes: "https://www.googleapis.com/auth/gmail.readonly email profile",
-        redirectTo: `${window.location.origin}/auth/callback?next=/?gmail=connected`,
+        redirectTo: `${window.location.origin}/auth/callback?next=${next}`,
       },
     });
   };
