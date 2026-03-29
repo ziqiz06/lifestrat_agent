@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useAppStore } from "@/store/appStore";
 import { CalendarTask, Conflict, TaskType } from "@/types";
+import { scheduleBlockAppliesToDate } from "@/lib/dayPlanner";
 import { detectOverflow } from "@/lib/dayPlanner";
 
 // ── Grid constants ─────────────────────────────────────────────────────────────
@@ -170,7 +171,8 @@ function TaskBlock({
   const isFlexible = task.flex === "flexible";
 
   const borderColor = isConflict ? "#ef4444" : task.color;
-  const bg = `${task.color}${confirmed ? "20" : "12"}`;
+  const bg = `${task.color}${confirmed ? "20" : "0d"}`;
+  const leftBorderColor = !confirmed ? "#eab308" : borderColor;
 
   return (
     <div
@@ -189,8 +191,8 @@ function TaskBlock({
         backgroundColor: bg,
         border: confirmed
           ? `1px solid ${borderColor}50`
-          : `1.5px dashed ${borderColor}90`,
-        borderLeft: `3px solid ${borderColor}`,
+          : `1.5px dashed ${borderColor}70`,
+        borderLeft: `3px solid ${leftBorderColor}`,
         borderRadius: 6,
         overflow: "hidden",
         zIndex: isConflict ? 2 : 1,
@@ -202,20 +204,22 @@ function TaskBlock({
       <div className="px-1.5 py-1 h-full flex flex-col gap-0.5 overflow-hidden">
         <div className="flex items-center gap-1 min-w-0">
           {isConflict && (
-            <span className="text-red-400 text-[10px] shrink-0">⚠</span>
+            <span className="text-red-400 text-[10px] shrink-0" title="Scheduling Conflict">⚠</span>
           )}
-          {!confirmed && (
-            <span
-              className="text-yellow-400 text-[10px] shrink-0"
-              title="Unconfirmed"
-            >
-              ◌
-            </span>
+          {!confirmed && task.status !== 'needs_confirmation' && (
+            <span className="text-yellow-400 text-[10px] shrink-0" title="Unconfirmed">◌</span>
           )}
-          {isFlexible && (
-            <span className="text-[9px] px-1 rounded bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 shrink-0 leading-tight">
-              flex
-            </span>
+          {task.status === 'needs_confirmation' && (
+            <span className="text-[9px] px-1 rounded bg-yellow-900/60 text-yellow-300 border border-yellow-700/50 shrink-0 leading-tight" title="Needs Confirmation">!</span>
+          )}
+          {task.status === 'deferred' && (
+            <span className="text-[9px] px-1 rounded bg-gray-700/80 text-gray-400 border border-gray-600/50 shrink-0 leading-tight">defer</span>
+          )}
+          {task.status === 'awaiting_permission' && (
+            <span className="text-[9px] px-1 rounded bg-orange-900/60 text-orange-300 border border-orange-700/50 shrink-0 leading-tight">?</span>
+          )}
+          {isFlexible && !task.status && (
+            <span className="text-[9px] px-1 rounded bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 shrink-0 leading-tight">flex</span>
           )}
           {isTall && (
             <span
@@ -297,7 +301,7 @@ function AddEventModal({
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!title.trim()) {
       setError("Please enter a title.");
@@ -459,16 +463,22 @@ function TaskPopover({
   onConfirm,
   onResolve,
   onDelete,
+  onUpdate,
 }: {
   selected: SelectedTask;
   onClose: () => void;
   onConfirm: () => void;
   onResolve: (keepId: string) => void;
   onDelete: () => void;
+  onUpdate: (updates: Partial<Pick<CalendarTask, 'title' | 'startTime' | 'endTime'>>) => void;
 }) {
   const { task, rect, conflict, conflictPartner } = selected;
   const confirmed = task.confirmed !== false;
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(task.title);
+  const [editStart, setEditStart] = useState(task.startTime);
+  const [editEnd, setEditEnd] = useState(task.endTime);
 
   // ── Smart positioning ──────────────────────────────────────────────────────
   const GAP = 10;
@@ -541,7 +551,26 @@ function TaskPopover({
               </h3>
               <p className="text-xs text-gray-400 mt-0.5">
                 {task.date}&nbsp;·&nbsp;{task.startTime}–{task.endTime}
+                {task.totalScheduledMinutes != null && (
+                  <span className="ml-2 text-gray-500">
+                    · {task.totalScheduledMinutes >= 60
+                      ? `${Math.round(task.totalScheduledMinutes / 6) / 10}h`
+                      : `${task.totalScheduledMinutes}min`} total
+                    {task.splitGroup ? ' across blocks' : ''}
+                  </span>
+                )}
               </p>
+              {task.status && task.status !== 'confirmed' && (
+                <div className={`mt-1 text-[10px] px-2 py-0.5 rounded-full inline-block font-medium ${
+                  task.status === 'needs_confirmation' ? 'bg-yellow-900/50 text-yellow-300' :
+                  task.status === 'scheduling_conflict' ? 'bg-red-900/50 text-red-300' :
+                  task.status === 'deferred' ? 'bg-gray-700 text-gray-400' :
+                  task.status === 'awaiting_permission' ? 'bg-orange-900/50 text-orange-300' :
+                  task.status === 'unscheduled' ? 'bg-gray-700 text-gray-500' : ''
+                }`}>
+                  {task.status.replace(/_/g, ' ')}
+                </div>
+              )}
             </div>
             <button
               onClick={onClose}
@@ -571,7 +600,26 @@ function TaskPopover({
           )}
 
           {/* Conflict section or no-conflict footer */}
-          {conflict && conflictPartner ? (
+          {conflict && conflict.isBlockedTime ? (
+            // Blocked-time conflict — no resolution options, just a warning
+            <div className="rounded-xl bg-orange-950/40 border border-orange-800/40 p-3">
+              <div className="flex items-start gap-2">
+                <span className="text-orange-400 text-sm shrink-0 mt-0.5">⚠</span>
+                <div>
+                  <p className="text-xs text-orange-300 font-semibold leading-tight">
+                    Overlaps blocked time
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                    {conflict.reason}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1.5">
+                    Move this event or adjust the blocked interval in Preferences.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : conflict && conflictPartner ? (
+            // Task-to-task conflict — user chooses which to keep
             <div className="rounded-xl bg-red-950/40 border border-red-800/40 p-3 space-y-3">
               <div className="flex items-start gap-2">
                 <span className="text-red-400 text-sm shrink-0 mt-0.5">⚠</span>
@@ -591,28 +639,17 @@ function TaskPopover({
               </div>
               <div className="space-y-1.5">
                 <button
-                  onClick={() => {
-                    onResolve(task.id);
-                    onClose();
-                  }}
+                  onClick={() => { onResolve(task.id); onClose(); }}
                   className="w-full text-left text-xs bg-indigo-600/25 hover:bg-indigo-600/45 text-indigo-200 border border-indigo-600/40 rounded-lg px-3 py-2 transition-colors leading-snug"
                 >
                   <span className="font-semibold">Keep this</span>
-                  <span className="text-indigo-400">
-                    {" "}
-                    · remove &quot;{conflictPartner.title}&quot;
-                  </span>
+                  <span className="text-indigo-400"> · remove &quot;{conflictPartner.title}&quot;</span>
                 </button>
                 <button
-                  onClick={() => {
-                    onResolve(conflictPartner.id);
-                    onClose();
-                  }}
+                  onClick={() => { onResolve(conflictPartner.id); onClose(); }}
                   className="w-full text-left text-xs bg-gray-700/50 hover:bg-gray-700 text-gray-300 border border-gray-600/40 rounded-lg px-3 py-2 transition-colors leading-snug"
                 >
-                  <span className="font-semibold">
-                    Keep &quot;{conflictPartner.title}&quot;
-                  </span>
+                  <span className="font-semibold">Keep &quot;{conflictPartner.title}&quot;</span>
                   <span className="text-gray-500"> · remove this</span>
                 </button>
               </div>
@@ -620,14 +657,63 @@ function TaskPopover({
           ) : (
             <div className="flex items-center gap-1.5 pt-1">
               <div className="w-1.5 h-1.5 rounded-full bg-green-500/70" />
-              <span className="text-[10px] text-gray-500">
-                No conflicts with other events
-              </span>
+              <span className="text-[10px] text-gray-500">No conflicts with other events</span>
             </div>
           )}
 
-          {/* Delete section */}
+          {/* Edit section */}
           <div className="mt-3 pt-3 border-t border-gray-700/50">
+            {!editing ? (
+              <button
+                onClick={() => setEditing(true)}
+                className="w-full text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 rounded-lg px-3 py-2 transition-colors text-left"
+              >
+                ✏ Edit name / time
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full bg-gray-800 text-white text-xs rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                  placeholder="Event name"
+                />
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="block text-[10px] text-gray-500 mb-0.5">Start</label>
+                    <input type="time" value={editStart} onChange={(e) => setEditStart(e.target.value)}
+                      className="w-full bg-gray-800 text-white text-xs rounded-lg px-2 py-1.5 border border-gray-600 focus:border-indigo-500 focus:outline-none" />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-[10px] text-gray-500 mb-0.5">End</label>
+                    <input type="time" value={editEnd} onChange={(e) => setEditEnd(e.target.value)}
+                      className="w-full bg-gray-800 text-white text-xs rounded-lg px-2 py-1.5 border border-gray-600 focus:border-indigo-500 focus:outline-none" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      onUpdate({ title: editTitle, startTime: editStart, endTime: editEnd });
+                      setEditing(false);
+                      onClose();
+                    }}
+                    className="flex-1 py-1.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-medium transition-colors"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setEditing(false)}
+                    className="flex-1 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Delete section */}
+          <div className="mt-2 pt-2 border-t border-gray-700/30">
             {!confirmingDelete ? (
               <button
                 onClick={() => setConfirmingDelete(true)}
@@ -666,6 +752,33 @@ function TaskPopover({
   );
 }
 
+// ── UnavailableBlock ───────────────────────────────────────────────────────────
+function UnavailableBlock({ startTime, endTime, label }: { startTime: string; endTime: string; label: string }) {
+  const top = topPx(startTime);
+  const h = heightPx(startTime, endTime);
+  if (h <= 0) return null;
+  return (
+    <div
+      style={{
+        position: "absolute", top, height: h, left: 0, right: 0, zIndex: 0,
+        background: "repeating-linear-gradient(135deg, rgba(55,65,81,0.35) 0px, rgba(55,65,81,0.35) 2px, transparent 2px, transparent 8px)",
+        backgroundColor: "rgba(17,24,39,0.45)",
+        borderTop: "1px solid rgba(75,85,99,0.5)",
+        borderBottom: "1px solid rgba(75,85,99,0.5)",
+        pointerEvents: "none",
+      }}
+    >
+      <span style={{ fontSize: 9, color: "rgba(156,163,175,0.8)", padding: "2px 6px", display: "block", lineHeight: "14px", userSelect: "none" }}>{label}</span>
+    </div>
+  );
+}
+
+function addMinutes(time: string, mins: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const total = h * 60 + m + mins;
+  return `${String(Math.min(Math.floor(total / 60), 23)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
 // ── CalendarView ───────────────────────────────────────────────────────────────
 export default function CalendarView() {
   const {
@@ -677,6 +790,7 @@ export default function CalendarView() {
     deleteCalendarTask,
     addCustomCalendarTask,
     extendTask,
+    updateCalendarTask,
   } = useAppStore();
 
   const [weekOffset, setWeekOffset] = useState(0);
@@ -699,7 +813,7 @@ export default function CalendarView() {
     const conflict =
       conflicts.find((c) => c.taskAId === task.id || c.taskBId === task.id) ??
       null;
-    const partnerId = conflict
+    const partnerId = conflict && !conflict.isBlockedTime
       ? conflict.taskAId === task.id
         ? conflict.taskBId
         : conflict.taskAId
@@ -923,6 +1037,26 @@ export default function CalendarView() {
                     />
                   ))}
 
+                  {/* Unavailable blocks — sleep, meals */}
+                  {profile.wakeTime && (
+                    <UnavailableBlock startTime={`${String(START_HOUR).padStart(2,"0")}:00`} endTime={profile.wakeTime} label="Sleeping" />
+                  )}
+                  {profile.sleepTime && (
+                    <UnavailableBlock startTime={profile.sleepTime} endTime={`${String(END_HOUR - 1).padStart(2,"0")}:59`} label="Sleeping" />
+                  )}
+                  {profile.breakfastTime && (profile.breakfastDurationMinutes ?? 0) > 0 && (
+                    <UnavailableBlock startTime={profile.breakfastTime} endTime={addMinutes(profile.breakfastTime, profile.breakfastDurationMinutes)} label="Breakfast" />
+                  )}
+                  {profile.lunchStart && (profile.lunchDurationMinutes ?? 0) > 0 && (
+                    <UnavailableBlock startTime={profile.lunchStart} endTime={addMinutes(profile.lunchStart, profile.lunchDurationMinutes)} label="Lunch" />
+                  )}
+                  {profile.dinnerTime && (profile.dinnerDurationMinutes ?? 0) > 0 && (
+                    <UnavailableBlock startTime={profile.dinnerTime} endTime={addMinutes(profile.dinnerTime, profile.dinnerDurationMinutes)} label="Dinner" />
+                  )}
+                  {(profile.scheduleBlocks ?? []).filter((b) => scheduleBlockAppliesToDate(b, date)).map((b) => (
+                    <UnavailableBlock key={b.id} startTime={b.startTime} endTime={b.endTime} label={b.name} />
+                  ))}
+
                   {/* Task blocks */}
                   {laid.map((l) => (
                     <TaskBlock
@@ -1020,6 +1154,9 @@ export default function CalendarView() {
           onDelete={() => {
             deleteCalendarTask(selectedTask.task.id);
             setSelectedTask(null);
+          }}
+          onUpdate={(updates) => {
+            updateCalendarTask(selectedTask.task.id, updates);
           }}
         />
       )}

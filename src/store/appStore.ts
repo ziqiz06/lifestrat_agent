@@ -41,6 +41,15 @@ const DEFAULT_PROFILE: UserProfile = {
   doNotScheduleDays: [],
   doNotScheduleWindows: "",
   timezone: "",
+  wakeTime: "07:30",
+  sleepTime: "23:00",
+  breakfastTime: "07:30",
+  breakfastDurationMinutes: 30,
+  lunchStart: "12:00",
+  lunchDurationMinutes: 60,
+  dinnerTime: "18:30",
+  dinnerDurationMinutes: 60,
+  scheduleBlocks: [],
   completed: false,
 };
 
@@ -83,7 +92,7 @@ interface AppStore extends AppState {
   completeOnboarding: (profile: UserProfile) => void;
   updateProfile: (profile: Partial<UserProfile>) => void;
   setOpportunityInterest: (id: string, interested: boolean | null) => void;
-  addOpportunityToCalendar: (opportunityId: string) => void;
+  addOpportunityToCalendar: (opportunityId: string, opts?: { endTime?: string; durationMinutes?: number; title?: string }) => void;
   extendTask: (taskId: string, extraMinutes: number) => void;
   confirmCalendarTask: (taskId: string) => void;
   deleteCalendarTask: (taskId: string) => void;
@@ -97,6 +106,9 @@ interface AppStore extends AppState {
   createCharacter: (name: string, appearance?: CharacterAppearance) => void;
   refreshCharacterStats: () => void;
   addGoal: (text: string) => void;
+  updateCalendarTask: (taskId: string, updates: Partial<Pick<import('@/types').CalendarTask, 'title' | 'startTime' | 'endTime'>>) => void;
+  sendChatMessage: (content: string) => Promise<void>;
+  clearChat: () => void;
 }
 
 export const useAppStore = create<AppStore>()(
@@ -109,7 +121,7 @@ export const useAppStore = create<AppStore>()(
         DEFAULT_PROFILE,
       ),
       calendarTasks: mockCalendarTasks,
-      conflicts: detectConflicts(mockCalendarTasks),
+      conflicts: detectConflicts(mockCalendarTasks, DEFAULT_PROFILE),
       goals: DEFAULT_GOALS,
       activeTab: "dashboard",
       onboardingComplete: false,
@@ -117,6 +129,7 @@ export const useAppStore = create<AppStore>()(
       aiInsightLoading: false,
       dailyStrategy: null,
       character: null,
+      chatMessages: [],
 
       setActiveTab: (tab) => set({ activeTab: tab }),
 
@@ -177,7 +190,7 @@ export const useAppStore = create<AppStore>()(
 
       completeOnboarding: (profile) => {
         const rankedOpps = rankOpportunities(get().opportunities, profile);
-        const conflicts = detectConflicts(get().calendarTasks);
+        const conflicts = detectConflicts(get().calendarTasks, get().profile);
         const strategy = generateDailyStrategy(rankedOpps, profile);
         set({
           profile,
@@ -297,7 +310,7 @@ Format your response as:
         const rankedOpps = rankOpportunities(get().opportunities, profile);
         const strategy = generateDailyStrategy(rankedOpps, profile);
         const reflowed = reflowCalendar(get().calendarTasks, profile);
-        set({ profile, opportunities: rankedOpps, dailyStrategy: strategy, calendarTasks: reflowed, conflicts: detectConflicts(reflowed) });
+        set({ profile, opportunities: rankedOpps, dailyStrategy: strategy, calendarTasks: reflowed, conflicts: detectConflicts(reflowed, profile) });
       },
 
       setOpportunityInterest: (id, interested) => {
@@ -308,10 +321,11 @@ Format your response as:
         }));
       },
 
-      addOpportunityToCalendar: (opportunityId) => {
+      addOpportunityToCalendar: (opportunityId, opts) => {
         const opp = get().opportunities.find((o) => o.id === opportunityId);
         if (!opp || !opp.deadline) return;
         const profile = get().profile;
+        const taskTitle = opts?.title ?? opp.title;
 
         // Categories whose events happen at a fixed real-world time
         const FIXED_TIME_CATEGORIES = new Set([
@@ -340,7 +354,8 @@ Format your response as:
           other: '#6b7280',
         };
 
-        const durationMin = Math.round(opp.estimatedHours * 60);
+        // opts can override duration or end time (from the schedule modal)
+        const durationMin = opts?.durationMinutes ?? Math.round(opp.estimatedHours * 60);
 
         const calcEnd = (start: string, mins: number): string => {
           const [sh, sm] = start.split(':').map(Number);
@@ -354,9 +369,8 @@ Format your response as:
 
         if (opp.eventTime) {
           // ── Fixed-time event: email contains a real clock time ──────────────
-          // Place it at that exact time — do NOT look for a flexible slot.
           startTime = opp.eventTime;
-          endTime = opp.eventEndTime ?? calcEnd(startTime, durationMin);
+          endTime = opts?.endTime ?? opp.eventEndTime ?? calcEnd(startTime, durationMin);
           taskFlex = 'fixed';
         } else if (!FIXED_TIME_CATEGORIES.has(opp.category)) {
           // ── Flexible task: find the first open slot on the deadline day ─────
@@ -367,22 +381,20 @@ Format your response as:
             startTime = slot.startTime;
             endTime = calcEnd(startTime, durationMin);
           } else {
-            // Day is full — fall back to preferred start and let conflict detection flag it
             startTime = profile.preferredStartTime || '09:00';
             endTime = calcEnd(startTime, durationMin);
           }
           taskFlex = 'flexible';
         } else {
-          // ── Fixed-time category but no parseable clock time in the email ────
-          // Best we can do: use preferred start time (user can drag it later)
+          // ── Fixed-time category but no parseable clock time ──────────────────
           startTime = profile.preferredStartTime || '09:00';
-          endTime = calcEnd(startTime, durationMin);
+          endTime = opts?.endTime ?? calcEnd(startTime, durationMin);
           taskFlex = 'fixed';
         }
 
         const newTask: CalendarTask = {
           id: `opp-task-${opportunityId}`,
-          title: opp.title,
+          title: taskTitle,
           type,
           flex: taskFlex,
           startTime,
@@ -394,7 +406,7 @@ Format your response as:
         };
 
         const newTasks = [...get().calendarTasks, newTask];
-        const conflicts = detectConflicts(newTasks);
+        const conflicts = detectConflicts(newTasks, get().profile);
 
         set((state) => ({
           calendarTasks: newTasks,
@@ -407,7 +419,7 @@ Format your response as:
 
       extendTask: (taskId, extraMinutes) => {
         const newTasks = extendTaskAndReflowDay(get().calendarTasks, taskId, extraMinutes, get().profile);
-        set({ calendarTasks: newTasks, conflicts: detectConflicts(newTasks) });
+        set({ calendarTasks: newTasks, conflicts: detectConflicts(newTasks, get().profile) });
       },
 
       confirmCalendarTask: (taskId) => {
@@ -421,7 +433,7 @@ Format your response as:
       deleteCalendarTask: (taskId) => {
         const removed = get().calendarTasks.find((t) => t.id === taskId);
         const newTasks = get().calendarTasks.filter((t) => t.id !== taskId);
-        const newConflicts = detectConflicts(newTasks);
+        const newConflicts = detectConflicts(newTasks, get().profile);
         set((state) => ({
           calendarTasks: newTasks,
           conflicts: newConflicts,
@@ -445,7 +457,7 @@ Format your response as:
         const newTasks = [...get().calendarTasks, newTask];
         set({
           calendarTasks: newTasks,
-          conflicts: detectConflicts(newTasks),
+          conflicts: detectConflicts(newTasks, get().profile),
         });
       },
 
@@ -458,7 +470,7 @@ Format your response as:
         const newTasks = get().calendarTasks.filter((t) => t.id !== removeTaskId);
         set((state) => ({
           calendarTasks: newTasks,
-          conflicts: detectConflicts(newTasks),
+          conflicts: detectConflicts(newTasks, get().profile),
           // If removed task was linked to an opportunity, clear its addedToCalendar flag
           opportunities: removedTask?.opportunityId
             ? state.opportunities.map((o) =>
@@ -478,12 +490,222 @@ Format your response as:
         }));
       },
 
+      updateCalendarTask: (taskId, updates) => {
+        const newTasks = get().calendarTasks.map((t) =>
+          t.id === taskId ? { ...t, ...updates } : t,
+        );
+        set({ calendarTasks: newTasks, conflicts: detectConflicts(newTasks, get().profile) });
+      },
+
+      clearChat: () => set({ chatMessages: [] }),
+
+      sendChatMessage: async (content) => {
+        const { profile, calendarTasks, opportunities, goals, chatMessages } = get();
+
+        const userMsg = { role: 'user' as const, content };
+        const updatedMessages = [...chatMessages, userMsg];
+        set({ chatMessages: updatedMessages });
+
+        const upcomingTasks = [...calendarTasks]
+          .sort((a, b) => new Date(`${a.date}T${a.startTime}`).getTime() - new Date(`${b.date}T${b.startTime}`).getTime())
+          .slice(0, 10)
+          .map(t => `• ${t.title} — ${t.date} ${t.startTime}–${t.endTime}`)
+          .join('\n');
+
+        const topOpps = opportunities
+          .filter(o => o.category !== 'ignore')
+          .slice(0, 8)
+          .map(o => `• ${o.title} (priority: ${o.priority}/10, deadline: ${o.deadline ?? 'none'})`)
+          .join('\n');
+
+        const confirmedGoals = goals.filter(g => g.confirmed === true).map(g => `• ${g.text}`).join('\n');
+        const pendingGoals = goals.filter(g => g.confirmed === null).map(g => `• ${g.text}`).join('\n');
+
+        const mealsText = [
+          profile.breakfastTime ? `Breakfast: ${profile.breakfastTime} (${profile.breakfastDurationMinutes}min)` : null,
+          profile.lunchStart ? `Lunch: ${profile.lunchStart} (${profile.lunchDurationMinutes}min)` : null,
+          profile.dinnerTime ? `Dinner: ${profile.dinnerTime} (${profile.dinnerDurationMinutes}min)` : null,
+        ].filter(Boolean).join(', ');
+
+        const systemPrompt = `You are a personal career and life strategy assistant for ${profile.name || 'the user'}.
+
+User Profile:
+- Career goals: ${profile.careerGoals || 'not specified'}
+- Professional interests: ${profile.professionalInterests || 'not specified'}
+- Experience level: ${profile.experienceLevel}
+- Target industries: ${profile.targetIndustries || 'not specified'}
+- Actively looking for internships: ${profile.activelyLooking ? 'yes' : 'no'}
+- Schedule intensity: ${profile.scheduleIntensity}
+- Daily schedule: Wake ${profile.wakeTime}, Sleep ${profile.sleepTime}
+- Meals: ${mealsText || 'not specified'}
+- Blocked times: ${(profile.scheduleBlocks ?? []).map(b => `${b.name} ${b.startTime}–${b.endTime} (${b.recurrence})`).join('; ') || 'none'}
+
+Upcoming calendar events:
+${upcomingTasks || 'none'}
+
+Top opportunities:
+${topOpps || 'none'}
+
+Active goals:
+${confirmedGoals || 'none'}
+
+Pending goals to review:
+${pendingGoals || 'none'}
+
+You help the user analyze their career strategy, schedule, and opportunities. Keep responses concise and actionable. If the user mentions new career interests or goals that differ from their profile, note the shift and ask if they'd like to update their profile. Use their name if you know it.
+
+WHY / PURPOSE / WORTH-IT MODE — triggered by: "why does this matter", "what is the purpose", "should I do this", "is this worth it", "why should I", or any question asking for justification or value.
+
+Rules for this mode:
+- DO NOT repeat or summarize the task back to the user
+- DO NOT use generic phrases like "builds skills", "expands network", "good for growth" without specifics
+- Always tie the answer to: deadlines, probability of success, or leverage (what moves the needle most)
+- Max 5–6 lines total
+
+Structure to follow exactly:
+1. IMPACT — what outcome does this action directly influence? Be specific.
+2. CONSEQUENCE — what happens if they skip it? (lost opportunity, missed deadline, weakened position)
+3. PRIORITY COMPARISON — how does it rank against their other tasks? (higher/lower value and why)
+4. SIMPLIFIED TAKEAWAY — one clear recommendation
+
+Example output format:
+"The purpose is to maximize [specific outcome].
+- [Task A] → high impact because [specific reason tied to deadline/probability/leverage]
+- [Task B] → moderate impact because [specific reason]
+If you skip [task], the consequence is [specific loss].
+Recommendation: [one clear action]"
+
+SCHEDULING RULES (hard constraints — follow exactly):
+
+DEFINITIONS:
+- Blocked time = sleep, meals, classes, existing commitments, manually blocked personal time. NEVER schedule inside it without explicit user approval.
+- Fixed-time event = anything with a real stated time (meeting, class, workshop, networking event, career fair). Keep at its real time. Never move or split.
+- Flexible task = internship apps, studying, research, resume work. Can be moved and split.
+- Free space = all time after removing blocked time, fixed events, meals, sleep.
+
+HARD RULES:
+1. NEVER place tasks inside blocked time. If the only option is blocked time, mark it "Awaiting Permission" and ask the user first.
+2. Fixed events stay at their real start time. Do not move them.
+3. Never split fixed events. Only flexible tasks may be split.
+4. When splitting a flexible task, label all blocks after the first as "(continued)".
+5. Place tasks in priority order: fixed events first, then flexible tasks by urgency (deadline proximity) then importance.
+6. Stack flexible tasks sequentially. Prefer contiguous blocks. Split only when necessary.
+7. Respect workload budget: Light=4h, Moderate=6h, Heavy=8h, Insane=16h. Do not schedule more than the budget unless required by a same-day deadline.
+8. If budget is exceeded: move lower-priority tasks to the next day. Mark same-day deadline tasks that exceed budget as "Needs Confirmation" and ask the user.
+9. If free space is exhausted: do not silently cram more in. Mark remaining tasks as Deferred or Unscheduled and tell the user.
+10. If two fixed events overlap: show a Scheduling Conflict. Do not auto-resolve. The user must choose.
+11. Leave small buffers (5–15 min) around fixed events and between long focus blocks.
+12. Do not fill every empty minute. Open time after the workload budget is met should stay free.
+
+STATUS LABELS — use these exactly:
+- Confirmed: scheduled within budget, no conflicts
+- Needs Confirmation: scheduled but exceeds workload budget or uses protected time
+- Scheduling Conflict: two fixed events overlap, user must resolve
+- Deferred: moved to next day due to workload limit
+- Unscheduled: partially placed (show how much time remains)
+- Awaiting Permission: would require overriding blocked time
+
+OUTPUT FORMAT for any schedule you propose:
+For each item: title | type | status | date/time | total scheduled hours
+For split tasks: show all blocks, mark continuations, show total across blocks
+For overflow: list what was deferred and why
+For conflicts: list both items and tell the user to choose
+
+==================================================
+RESPONSE MODES — follow exactly, never mix
+==================================================
+
+MODE 1 — PRIORITIZATION MODE
+Trigger: user asks "what should I prioritize", "what matters most", "what should I focus on", or any similar question about importance/priority.
+Rules:
+- DO NOT generate a schedule or time blocks
+- DO NOT produce tables
+- List at most 3–5 items
+- Max 6 lines total in the response body
+- Structure: top 3 priorities → 1–2 sentence explanation → one suggested next action → optional follow-up question
+- If your response exceeds 8 lines, shorten it before sending
+
+MODE 2 — PLANNING MODE
+Trigger: user asks "make a schedule", "plan my day", "plan my week", or similar explicit scheduling requests.
+Rules:
+- Apply all scheduling rules above
+- Show full schedule with status labels and hours
+- Respect blocked time, workload budget, fixed events
+
+MODE 3 — CONFLICT MODE
+Trigger: the user describes or asks about a conflict between two events or tasks.
+Rules:
+- Clearly surface the conflict
+- DO NOT resolve it automatically
+- Ask the user to choose or reschedule
+
+DEFAULT RULE: If the trigger is ambiguous, use PRIORITIZATION MODE — not planning mode.
+HARD RULE: Never mix modes in a single response. Pick one and follow it completely.`;
+
+        // Append placeholder for streaming
+        set({ chatMessages: [...updatedMessages, { role: 'assistant' as const, content: '' }] });
+
+        try {
+          const res = await fetch('/api/ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messages: [
+                { role: 'system', content: systemPrompt },
+                ...updatedMessages,
+              ],
+              stream: true,
+            }),
+          });
+
+          if (!res.ok || !res.body) {
+            set({ chatMessages: [...updatedMessages, { role: 'assistant' as const, content: 'Sorry, I could not connect to the AI service.' }] });
+            return;
+          }
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let fullText = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            for (const line of chunk.split('\n')) {
+              if (!line.startsWith('data: ')) continue;
+              const data = line.slice(6).trim();
+              if (data === '[DONE]') break;
+              try {
+                const json = JSON.parse(data);
+                const delta = json.choices?.[0]?.delta?.content ?? '';
+                fullText += delta;
+                // Hide thinking content (everything before </think>) while streaming
+                const thinkClose = fullText.indexOf('</think>');
+                const displayText = thinkClose !== -1
+                  ? fullText.slice(thinkClose + '</think>'.length).trim()
+                  : '';
+                set({ chatMessages: [...updatedMessages, { role: 'assistant' as const, content: displayText || '…' }] });
+              } catch { /* skip malformed */ }
+            }
+          }
+
+          // After streaming done, store the clean final text for history (so future turns have real context)
+          const thinkClose = fullText.indexOf('</think>');
+          const finalContent = thinkClose !== -1
+            ? fullText.slice(thinkClose + '</think>'.length).trim()
+            : fullText.trim();
+          set({ chatMessages: [...updatedMessages, { role: 'assistant' as const, content: finalContent || '(no response)' }] });
+        } catch {
+          set({ chatMessages: [...updatedMessages, { role: 'assistant' as const, content: 'Could not connect to AI service.' }] });
+        }
+      },
+
       resetStore: () => {
         set({
           profile: DEFAULT_PROFILE,
           goals: DEFAULT_GOALS,
           calendarTasks: mockCalendarTasks,
-          conflicts: detectConflicts(mockCalendarTasks),
+          conflicts: detectConflicts(mockCalendarTasks, DEFAULT_PROFILE),
           opportunities: rankOpportunities(
             deriveOpportunitiesFromEmails(mockEmails),
             DEFAULT_PROFILE,
@@ -493,6 +715,7 @@ Format your response as:
           aiInsightLoading: false,
           dailyStrategy: null,
           activeTab: "dashboard",
+          chatMessages: [],
         });
       },
     }),
@@ -506,6 +729,7 @@ Format your response as:
           aiInsight,
           aiInsightLoading,
           dailyStrategy,
+          chatMessages,
           ...persisted
         } = state;
         void emails;
@@ -513,8 +737,18 @@ Format your response as:
         void aiInsight;
         void aiInsightLoading;
         void dailyStrategy;
+        void chatMessages;
         return persisted;
       },
+      // Merge stored profile with DEFAULT_PROFILE so new fields always have values
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as Partial<AppState>),
+        profile: {
+          ...DEFAULT_PROFILE,
+          ...((persisted as Partial<AppState>).profile ?? {}),
+        },
+      }),
     },
   ),
 );

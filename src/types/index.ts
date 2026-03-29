@@ -12,10 +12,20 @@ export interface UserProfile {
   preferredEndTime: string; // "HH:MM" 24h
   typicalDaySnapshot: string;
   perDaySchedule: Record<string, string>; // optional per-day overrides, keyed by day name
-  scheduleIntensity: "light" | "moderate" | "intense";
+  scheduleIntensity: "light" | "moderate" | "heavy" | "insane";
   doNotScheduleDays: string[]; // e.g. ["Saturday", "Sunday"]
   doNotScheduleWindows: string; // e.g. "After 9pm"
   timezone: string; // IANA timezone string, e.g. "America/New_York"
+  // Lifestyle blocks — used to grey out unavailable time on the calendar
+  wakeTime: string;              // "HH:MM" e.g. "07:30"
+  sleepTime: string;             // "HH:MM" e.g. "23:00"
+  breakfastTime: string;         // "HH:MM" e.g. "07:30" (empty = skip)
+  breakfastDurationMinutes: number; // e.g. 30
+  lunchStart: string;            // "HH:MM" e.g. "12:00" (empty = no lunch block)
+  lunchDurationMinutes: number;  // e.g. 60
+  dinnerTime: string;            // "HH:MM" e.g. "18:30" (empty = skip)
+  dinnerDurationMinutes: number; // e.g. 60
+  scheduleBlocks: ScheduleBlock[]; // manually added time blocks to show as unavailable on calendar
   completed: boolean;
 }
 
@@ -73,6 +83,25 @@ export type TaskType =
 
 export type TaskFlex = 'fixed' | 'flexible';
 
+export type TaskStatus =
+  | 'confirmed'
+  | 'needs_confirmation'
+  | 'scheduling_conflict'
+  | 'deferred'
+  | 'unscheduled'
+  | 'awaiting_permission';
+
+export type ScheduleBlockRecurrence = 'none' | 'daily' | 'weekly' | 'weekdays' | 'weekends';
+
+export interface ScheduleBlock {
+  id: string;
+  name: string;
+  startTime: string; // "HH:MM"
+  endTime: string;   // "HH:MM"
+  date?: string;     // "YYYY-MM-DD" — required for 'none', used for day-of-week for 'weekly'
+  recurrence: ScheduleBlockRecurrence;
+}
+
 export interface TimeBlock {
   startTime: string; // "HH:MM"
   endTime: string;   // "HH:MM"
@@ -97,6 +126,9 @@ export interface CalendarTask {
   color: string;
   conflict?: boolean;
   confirmed?: boolean; // undefined/true = confirmed, false = pending user confirmation
+  status?: TaskStatus; // scheduling status label
+  splitGroup?: string; // shared ID across "(continued)" blocks of the same task
+  totalScheduledMinutes?: number; // sum across all split blocks
 }
 
 export interface Conflict {
@@ -108,6 +140,7 @@ export interface Conflict {
   date: string;
   reason: string;
   suggestions: string[];
+  isBlockedTime?: boolean; // true when taskB is a blocked interval, not another task
 }
 
 export interface Goal {
@@ -136,6 +169,7 @@ export interface AppState {
   aiInsight: string;
   aiInsightLoading: boolean;
   dailyStrategy: DailyStrategy | null;
+  chatMessages: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
 export interface StrategyAction {

@@ -1,8 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useAppStore } from "@/store/appStore";
-import type { Plan, CharacterStats } from "@/types";
-import { generatePlans } from "@/lib/strategyEngine";
+import type { CharacterStats } from "@/types";
 import PixelSprite from "@/components/character/PixelSprite";
 import {
   getArchetypePalette,
@@ -41,11 +40,13 @@ function GreetingBanner() {
 
   const name = profile.name;
   const moodLabel =
-    profile.scheduleIntensity === "intense"
-      ? "🔥 Intense mode — let's push today."
-      : profile.scheduleIntensity === "light"
-        ? "🌱 Light mode — steady and sustainable."
-        : "⚡ Moderate mode — balanced and productive.";
+    profile.scheduleIntensity === "insane"
+      ? "💀 Insane mode — maximum output."
+      : profile.scheduleIntensity === "heavy"
+        ? "🔥 Heavy mode — let's push today."
+        : profile.scheduleIntensity === "light"
+          ? "🌱 Light mode — steady and sustainable."
+          : "⚡ Moderate mode — balanced and productive.";
 
   return (
     <div className="bg-gradient-to-r from-indigo-900/50 to-purple-900/50 rounded-2xl p-5 border border-indigo-800/50">
@@ -360,261 +361,102 @@ function ScheduleAndGoals() {
   );
 }
 
-// ── Plans panel (for conflict scenarios) ─────────────────────────────────────
-function PlansPanel({ plans }: { plans: Plan[] }) {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-      {plans.map((plan) => (
-        <div
-          key={plan.name}
-          className="bg-gray-700/50 rounded-xl p-4 border border-gray-600"
-        >
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-xs font-bold text-indigo-400 bg-indigo-900/40 px-2 py-0.5 rounded-full">
-              {plan.name}
-            </span>
-            <span className="text-xs text-gray-400">{plan.focus}</span>
-          </div>
-          <p className="text-xs text-gray-500 mb-2 italic">
-            {plan.explanation}
-          </p>
-          <ol className="space-y-1.5">
-            {plan.items.map((item, idx) => (
-              <li key={item.opportunityId} className="flex items-start gap-2">
-                <span className="text-xs text-indigo-400 shrink-0 font-mono mt-0.5">
-                  {idx + 1}.
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-white font-medium truncate">
-                    {item.action}
-                  </p>
-                  {item.reason && (
-                    <p className="text-xs text-gray-500 truncate">
-                      {item.reason}
-                    </p>
-                  )}
-                </div>
-                <span className="text-xs text-gray-600 shrink-0">
-                  {item.estimatedHours}h
-                </span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      ))}
-    </div>
-  );
-}
+// ── AI Strategy Chatbot ───────────────────────────────────────────────────────
+function AIChatbot() {
+  const { chatMessages, sendChatMessage, clearChat, aiInsightLoading } = useAppStore();
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-// ── Combined Strategy + AI Panel ──────────────────────────────────────────────
-function StrategyPanel() {
-  const {
-    dailyStrategy,
-    computeStrategy,
-    aiInsight,
-    aiInsightLoading,
-    generateAIInsights,
-    profile,
-    conflicts,
-    opportunities,
-  } = useAppStore();
+  // aiInsightLoading kept in destructure for potential future use
+  void aiInsightLoading;
 
-  const [aiOpen, setAiOpen] = useState(false);
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
-  const showPlans = conflicts.length >= 2;
-  const plans = showPlans ? generatePlans(opportunities, profile) : [];
-
-  const toggleAI = () => {
-    setAiOpen((v) => !v);
-    if (!aiInsight && !aiInsightLoading) {
-      generateAIInsights(profile);
-    }
+  const handleSend = async () => {
+    const text = input.trim();
+    if (!text || sending) return;
+    setInput('');
+    setSending(true);
+    await sendChatMessage(text);
+    setSending(false);
   };
 
+  const SUGGESTED = [
+    "What should I focus on this week?",
+    "Am I on track with my career goals?",
+    "Which opportunities should I prioritize?",
+  ];
+
   return (
-    <div className="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
-      {/* ── Today's Strategy header ── */}
-      <div className="flex items-center justify-between px-5 pt-5 pb-4">
-        <h2 className="font-semibold text-white flex items-center gap-2">
-          <span>📋</span> Today&apos;s Strategy
-          {dailyStrategy && (
-            <span className="text-xs text-gray-500 font-normal">
-              {dailyStrategy.date}
-            </span>
-          )}
+    <div className="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden flex flex-col" style={{ minHeight: 460 }}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-700">
+        <h2 className="font-semibold text-white flex items-center gap-2 text-sm">
+          <span>🤖</span> AI Strategy Assistant
+          <span className="text-xs text-gray-500 font-normal">(K2 Think)</span>
         </h2>
-        {dailyStrategy ? (
-          <button
-            onClick={computeStrategy}
-            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-          >
-            Refresh ↻
-          </button>
-        ) : (
-          <button
-            onClick={computeStrategy}
-            className="py-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors"
-          >
-            Compute →
+        {chatMessages.length > 0 && (
+          <button onClick={clearChat} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
+            Clear ↺
           </button>
         )}
       </div>
 
-      {/* ── Strategy body ── */}
-      <div className="px-5 pb-4">
-        {!dailyStrategy ? (
-          <p className="text-sm text-gray-500">
-            Generate a prioritized action plan for your day based on your
-            upcoming deadlines and goals.
-          </p>
-        ) : (
-          <>
-            {dailyStrategy.topActions.length === 0 ? (
-              <p className="text-sm text-gray-500">
-                No high-priority actions for today.
-              </p>
-            ) : (
-              <ol className="space-y-3">
-                {dailyStrategy.topActions.map((item, idx) => (
-                  <li
-                    key={item.opportunityId}
-                    className="flex items-start gap-3"
-                  >
-                    <span className="text-sm font-bold text-indigo-400 shrink-0 w-5 text-right mt-0.5">
-                      {idx + 1}.
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-white font-medium">
-                        {item.action}
-                      </p>
-                      {item.reason && (
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {item.reason}
-                        </p>
-                      )}
-                    </div>
-                    <span className="text-xs text-gray-600 shrink-0 mt-0.5">
-                      {item.estimatedHours}h
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            )}
-
-            {dailyStrategy.deferredItems.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-gray-700">
-                <p className="text-xs font-semibold text-gray-400 mb-2">
-                  Defer to tomorrow:
-                </p>
-                <ul className="space-y-1">
-                  {dailyStrategy.deferredItems.map((item) => (
-                    <li
-                      key={item.opportunityId}
-                      className="flex items-start gap-2"
-                    >
-                      <span className="text-gray-600 text-xs mt-0.5">–</span>
-                      <p className="text-xs text-gray-400">
-                        {item.action}
-                        {item.reason && (
-                          <span className="text-gray-600">
-                            {" "}
-                            — {item.reason}
-                          </span>
-                        )}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {dailyStrategy.overloaded && (
-              <div className="mt-3 pt-3 border-t border-yellow-800/40 flex items-start gap-2">
-                <span className="text-yellow-400 text-sm shrink-0">⚠️</span>
-                <p className="text-xs text-yellow-400">
-                  {dailyStrategy.totalScheduledHours}h planned /{" "}
-                  {dailyStrategy.availableHours}h available — consider dropping
-                  lower-priority items.
-                </p>
-              </div>
-            )}
-
-            {showPlans && plans.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-gray-700">
-                <p className="text-xs font-semibold text-gray-400 mb-1">
-                  {conflicts.length} schedule conflicts — choose a plan:
-                </p>
-                <PlansPanel plans={plans} />
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* ── AI Strategy accordion ── */}
-      <div className="border-t border-gray-700">
-        <button
-          onClick={toggleAI}
-          className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-700/40 transition-colors text-left"
-        >
-          <span className="text-sm font-medium text-white flex items-center gap-2">
-            <span>🤖</span> AI Strategy
-            <span className="text-xs text-gray-500 font-normal">
-              (K2 Think)
-            </span>
-            {aiInsightLoading && (
-              <span className="text-xs text-indigo-400 animate-pulse">
-                Thinking…
-              </span>
-            )}
-          </span>
-          <div className="flex items-center gap-2">
-            {aiInsight && !aiInsightLoading && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  generateAIInsights(profile);
-                }}
-                className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
-              >
-                Refresh ↻
-              </button>
-            )}
-            <span className="text-xs text-gray-500">{aiOpen ? "▲" : "▼"}</span>
-          </div>
-        </button>
-
-        {aiOpen && (
-          <div className="px-5 pb-5">
-            {!aiInsight && !aiInsightLoading ? (
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-500">
-                  Generate a personalized AI strategy from your profile and
-                  opportunities.
-                </p>
-                <button
-                  onClick={() => generateAIInsights(profile)}
-                  className="ml-4 shrink-0 py-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors"
-                >
-                  Generate →
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ maxHeight: 340 }}>
+        {chatMessages.length === 0 ? (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-400 text-center pt-4">Ask me anything about your career, schedule, or goals.</p>
+            <div className="space-y-2">
+              {SUGGESTED.map((s) => (
+                <button key={s} onClick={() => { setInput(s); }}
+                  className="w-full text-left text-xs bg-gray-700/50 hover:bg-gray-700 text-gray-300 rounded-xl px-4 py-2.5 border border-gray-600/50 transition-colors">
+                  {s}
                 </button>
-              </div>
-            ) : (
-              <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
-                {aiInsight.split(/(\*\*[^*]+\*\*)/).map((part, i) =>
-                  part.startsWith("**") && part.endsWith("**") ? (
-                    <span key={i} className="font-semibold text-white">
-                      {part.slice(2, -2)}
-                    </span>
-                  ) : (
-                    <span key={i}>{part}</span>
-                  ),
-                )}
-                {aiInsightLoading && <span className="animate-pulse">▌</span>}
-              </div>
-            )}
+              ))}
+            </div>
           </div>
+        ) : (
+          chatMessages.map((msg, i) => (
+            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                msg.role === 'user'
+                  ? 'bg-indigo-600 text-white rounded-br-sm'
+                  : 'bg-gray-700 text-gray-200 rounded-bl-sm'
+              }`}>
+                {msg.content
+                  ? msg.content.split(/(\*\*[^*]+\*\*)/).map((part, j) =>
+                      part.startsWith('**') && part.endsWith('**')
+                        ? <span key={j} className="font-semibold text-white">{part.slice(2, -2)}</span>
+                        : <span key={j}>{part}</span>
+                    )
+                  : <span className="animate-pulse text-gray-500">▌</span>
+                }
+              </div>
+            </div>
+          ))
         )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <div className="px-4 py-3 border-t border-gray-700">
+        <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex gap-2">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask about your career strategy..."
+            disabled={sending}
+            className="flex-1 bg-gray-700 text-white text-sm rounded-xl px-4 py-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none placeholder-gray-500 disabled:opacity-50"
+          />
+          <button type="submit" disabled={!input.trim() || sending}
+            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-medium transition-colors shrink-0">
+            {sending ? '…' : '→'}
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -706,8 +548,8 @@ export default function Dashboard() {
       {/* 3 · Upcoming schedule + Weekly goals */}
       <ScheduleAndGoals />
 
-      {/* 4 · Today's strategy + AI strategy (combined) */}
-      <StrategyPanel />
+      {/* 4 · AI Strategy Chatbot */}
+      <AIChatbot />
 
       {/* 5 · Top opportunities */}
       <TopOpportunities />

@@ -140,7 +140,7 @@ export default function Home() {
         return {
           opportunities: updatedOpps,
           calendarTasks: merged,
-          conflicts: detectConflicts(merged),
+          conflicts: detectConflicts(merged, useAppStore.getState().profile),
         };
       });
 

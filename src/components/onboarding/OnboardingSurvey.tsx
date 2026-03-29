@@ -15,30 +15,30 @@ const DAYS = [
   "Saturday",
   "Sunday",
 ];
-const DAY_SHORT: Record<string, string> = {
-  Monday: "Mon",
-  Tuesday: "Tue",
-  Wednesday: "Wed",
-  Thursday: "Thu",
-  Friday: "Fri",
-  Saturday: "Sat",
-  Sunday: "Sun",
-};
 
 export default function OnboardingSurvey({ onComplete }: Props) {
   const [step, setStep] = useState(0);
-  const [perDayEnabled, setPerDayEnabled] = useState(false);
+  const [breakfastEnabled, setBreakfastEnabled] = useState(true);
+  const [lunchEnabled, setLunchEnabled] = useState(true);
+  const [dinnerEnabled, setDinnerEnabled] = useState(true);
+
   const [form, setForm] = useState<Partial<UserProfile>>({
     activelyLooking: true,
     scheduleIntensity: "moderate",
     experienceLevel: "student",
     doNotScheduleDays: [],
-    dailyHoursAvailable: 4,
-    preferredStartTime: "09:00",
-    preferredEndTime: "22:00",
-    typicalDaySnapshot: "",
+    wakeTime: "07:30",
+    sleepTime: "23:00",
+    breakfastTime: "07:30",
+    breakfastDurationMinutes: 30,
+    lunchStart: "12:00",
+    lunchDurationMinutes: 60,
+    dinnerTime: "18:30",
+    dinnerDurationMinutes: 60,
     perDaySchedule: {},
     doNotScheduleWindows: "",
+    timezone: "",
+    scheduleBlocks: [],
   });
 
   const update = (key: keyof UserProfile, value: unknown) => {
@@ -53,10 +53,6 @@ export default function OnboardingSurvey({ onComplete }: Props) {
     );
   };
 
-  const updatePerDay = (day: string, value: string) => {
-    update("perDaySchedule", { ...(form.perDaySchedule ?? {}), [day]: value });
-  };
-
   const steps = [
     // ── Step 1: Career Goals ──────────────────────────────────────────────────
     {
@@ -65,7 +61,7 @@ export default function OnboardingSurvey({ onComplete }: Props) {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              What's your name?
+              What&apos;s your name?
             </label>
             <input
               type="text"
@@ -170,128 +166,116 @@ export default function OnboardingSurvey({ onComplete }: Props) {
       ),
     },
 
-    // ── Step 3: Daily Schedule Snapshot ──────────────────────────────────────
+    // ── Step 3: Daily Routine ─────────────────────────────────────────────────
     {
-      title: "Your Daily Schedule",
+      title: "Daily Routine",
       content: (
-        <div className="space-y-5">
-          {/* Availability window */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Hours available per day for career / study work:{" "}
-              <span className="text-indigo-400 font-bold">
-                {form.dailyHoursAvailable}h
-              </span>
-            </label>
-            <input
-              type="range"
-              min={1}
-              max={12}
-              value={form.dailyHoursAvailable ?? 4}
-              onChange={(e) =>
-                update("dailyHoursAvailable", Number(e.target.value))
-              }
-              className="w-full accent-indigo-500"
-            />
-            <div className="flex justify-between text-xs text-gray-500 mt-1">
-              <span>1h</span>
-              <span>6h</span>
-              <span>12h</span>
-            </div>
-          </div>
-
-          {/* Preferred window */}
-          <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-4">
+          {/* Wake / Sleep */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Preferred start time
-              </label>
-              <input
-                type="time"
-                value={form.preferredStartTime ?? "09:00"}
-                onChange={(e) => update("preferredStartTime", e.target.value)}
-                className="w-full bg-gray-700 text-white rounded-lg p-3 border border-gray-600 focus:border-indigo-500 focus:outline-none"
-              />
+              <p className="text-xs text-gray-500 mb-1">Wake up</p>
+              <input type="time" value={form.wakeTime ?? "07:30"}
+                onChange={(e) => update("wakeTime", e.target.value)}
+                className="w-full bg-gray-700 text-white rounded-lg p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Preferred end time
-              </label>
-              <input
-                type="time"
-                value={form.preferredEndTime ?? "22:00"}
-                onChange={(e) => update("preferredEndTime", e.target.value)}
-                className="w-full bg-gray-700 text-white rounded-lg p-3 border border-gray-600 focus:border-indigo-500 focus:outline-none"
-              />
+              <p className="text-xs text-gray-500 mb-1">Sleep time</p>
+              <input type="time" value={form.sleepTime ?? "23:00"}
+                onChange={(e) => update("sleepTime", e.target.value)}
+                className="w-full bg-gray-700 text-white rounded-lg p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm" />
             </div>
           </div>
 
-          {/* Typical day snapshot */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Describe your typical day
-            </label>
-            <p className="text-xs text-gray-500 mb-2">
-              Give a general picture — we'll use this to schedule tasks around
-              your existing routine.
-            </p>
-            <textarea
-              className="w-full bg-gray-700 text-white rounded-lg p-3 border border-gray-600 focus:border-indigo-500 focus:outline-none resize-none"
-              rows={3}
-              placeholder="e.g. Classes 9–12, lunch break, free afternoon, gym around 5pm, dinner at 7, wind down by 10…"
-              value={form.typicalDaySnapshot ?? ""}
-              onChange={(e) => update("typicalDaySnapshot", e.target.value)}
-            />
-          </div>
-
-          {/* Per-day customization toggle */}
+          {/* Breakfast */}
           <div className="border border-gray-600 rounded-xl overflow-hidden">
-            <button
-              onClick={() => setPerDayEnabled((v) => !v)}
-              className="w-full flex items-center justify-between px-4 py-3 bg-gray-700/60 hover:bg-gray-700 transition-colors text-left"
-            >
+            <button onClick={() => setBreakfastEnabled((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-gray-700/60 hover:bg-gray-700 transition-colors text-left">
               <div>
-                <span className="text-sm font-medium text-gray-200">
-                  My schedule varies a lot day-to-day
-                </span>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Optionally describe each day individually
-                </p>
+                <span className="text-sm font-medium text-gray-200">Breakfast</span>
+                <p className="text-xs text-gray-500 mt-0.5">Block off morning meal time</p>
               </div>
-              <span
-                className={`text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${
-                  perDayEnabled
-                    ? "bg-indigo-600 border-indigo-500 text-white"
-                    : "bg-gray-700 border-gray-600 text-gray-400"
-                }`}
-              >
-                {perDayEnabled ? "On" : "Off"}
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${breakfastEnabled ? "bg-indigo-600 border-indigo-500 text-white" : "bg-gray-700 border-gray-600 text-gray-400"}`}>
+                {breakfastEnabled ? "On" : "Off"}
               </span>
             </button>
+            {breakfastEnabled && (
+              <div className="px-4 py-3 bg-gray-800/50 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Starts at</p>
+                  <input type="time" value={form.breakfastTime ?? "07:30"}
+                    onChange={(e) => update("breakfastTime", e.target.value)}
+                    className="w-full bg-gray-700 text-white rounded-lg p-2 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Duration: <span className="text-indigo-400 font-bold">{form.breakfastDurationMinutes ?? 30} min</span></p>
+                  <input type="range" min={20} max={90} step={5}
+                    value={form.breakfastDurationMinutes ?? 30}
+                    onChange={(e) => update("breakfastDurationMinutes", Number(e.target.value))}
+                    className="w-full accent-indigo-500 mt-2" />
+                </div>
+              </div>
+            )}
+          </div>
 
-            {perDayEnabled && (
-              <div className="divide-y divide-gray-700">
-                {DAYS.map((day) => (
-                  <div
-                    key={day}
-                    className="flex items-start gap-3 px-4 py-3 bg-gray-800/50"
-                  >
-                    <span className="text-xs font-semibold text-indigo-400 w-8 pt-2.5 shrink-0">
-                      {DAY_SHORT[day]}
-                    </span>
-                    <textarea
-                      className="flex-1 bg-gray-700 text-white text-sm rounded-lg p-2 border border-gray-600 focus:border-indigo-500 focus:outline-none resize-none"
-                      rows={2}
-                      placeholder={
-                        day === "Saturday" || day === "Sunday"
-                          ? "e.g. Relaxed morning, social plans in the afternoon…"
-                          : "e.g. Lab section 2–4pm, busy evening with club meeting…"
-                      }
-                      value={(form.perDaySchedule ?? {})[day] ?? ""}
-                      onChange={(e) => updatePerDay(day, e.target.value)}
-                    />
-                  </div>
-                ))}
+          {/* Lunch */}
+          <div className="border border-gray-600 rounded-xl overflow-hidden">
+            <button onClick={() => setLunchEnabled((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-gray-700/60 hover:bg-gray-700 transition-colors text-left">
+              <div>
+                <span className="text-sm font-medium text-gray-200">Lunch</span>
+                <p className="text-xs text-gray-500 mt-0.5">Block off midday meal time</p>
+              </div>
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${lunchEnabled ? "bg-indigo-600 border-indigo-500 text-white" : "bg-gray-700 border-gray-600 text-gray-400"}`}>
+                {lunchEnabled ? "On" : "Off"}
+              </span>
+            </button>
+            {lunchEnabled && (
+              <div className="px-4 py-3 bg-gray-800/50 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Starts at</p>
+                  <input type="time" value={form.lunchStart ?? "12:00"}
+                    onChange={(e) => update("lunchStart", e.target.value)}
+                    className="w-full bg-gray-700 text-white rounded-lg p-2 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Duration: <span className="text-indigo-400 font-bold">{form.lunchDurationMinutes ?? 60} min</span></p>
+                  <input type="range" min={20} max={120} step={10}
+                    value={form.lunchDurationMinutes ?? 60}
+                    onChange={(e) => update("lunchDurationMinutes", Number(e.target.value))}
+                    className="w-full accent-indigo-500 mt-2" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Dinner */}
+          <div className="border border-gray-600 rounded-xl overflow-hidden">
+            <button onClick={() => setDinnerEnabled((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-gray-700/60 hover:bg-gray-700 transition-colors text-left">
+              <div>
+                <span className="text-sm font-medium text-gray-200">Dinner</span>
+                <p className="text-xs text-gray-500 mt-0.5">Block off evening meal time</p>
+              </div>
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${dinnerEnabled ? "bg-indigo-600 border-indigo-500 text-white" : "bg-gray-700 border-gray-600 text-gray-400"}`}>
+                {dinnerEnabled ? "On" : "Off"}
+              </span>
+            </button>
+            {dinnerEnabled && (
+              <div className="px-4 py-3 bg-gray-800/50 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Starts at</p>
+                  <input type="time" value={form.dinnerTime ?? "18:30"}
+                    onChange={(e) => update("dinnerTime", e.target.value)}
+                    className="w-full bg-gray-700 text-white rounded-lg p-2 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Duration: <span className="text-indigo-400 font-bold">{form.dinnerDurationMinutes ?? 60} min</span></p>
+                  <input type="range" min={30} max={120} step={10}
+                    value={form.dinnerDurationMinutes ?? 60}
+                    onChange={(e) => update("dinnerDurationMinutes", Number(e.target.value))}
+                    className="w-full accent-indigo-500 mt-2" />
+                </div>
               </div>
             )}
           </div>
@@ -299,20 +283,46 @@ export default function OnboardingSurvey({ onComplete }: Props) {
       ),
     },
 
-    // ── Step 4: Blocked Times ─────────────────────────────────────────────────
+    // ── Step 4: Workload & Blocked Days ───────────────────────────────────────
     {
-      title: "Blocked Times & Intensity",
+      title: "Workload & Blocked Days",
       content: (
         <div className="space-y-5">
+          {/* Workload picker */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-3">
+              How intense should your schedule be?
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { value: "light", label: "🌱 Light", sub: "0–4h/day" },
+                { value: "moderate", label: "⚡ Moderate", sub: "4–7h/day" },
+                { value: "heavy", label: "🔥 Heavy", sub: "7–9h/day" },
+                { value: "insane", label: "💀 Insane", sub: "9–16h/day" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => update("scheduleIntensity", opt.value)}
+                  className={`py-3 px-4 rounded-xl border text-left transition-colors ${
+                    form.scheduleIntensity === opt.value
+                      ? "bg-indigo-600 border-indigo-500 text-white"
+                      : "bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500"
+                  }`}
+                >
+                  <div className="text-sm font-medium">{opt.label}</div>
+                  <div className="text-xs opacity-70 mt-0.5">{opt.sub}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Do-not-schedule days */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
-              Days you do <span className="text-red-400">not</span> want
-              work-like tasks scheduled
+              Days you do <span className="text-red-400">not</span> want work-like tasks scheduled
             </label>
             <p className="text-xs text-gray-500 mb-2">
-              No career tasks, applications, or study blocks will be placed on
-              these days.
+              No career tasks, applications, or study blocks will be placed on these days.
             </p>
             <div className="flex flex-wrap gap-2">
               {DAYS.map((day) => (
@@ -331,57 +341,6 @@ export default function OnboardingSurvey({ onComplete }: Props) {
               ))}
             </div>
           </div>
-
-          {/* Do-not-schedule time windows */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Time windows to keep free of work tasks
-            </label>
-            <p className="text-xs text-gray-500 mb-2">
-              Describe any recurring blocks you want left open — mornings,
-              lunch, evenings, etc.
-            </p>
-            <input
-              type="text"
-              className="w-full bg-gray-700 text-white rounded-lg p-3 border border-gray-600 focus:border-indigo-500 focus:outline-none"
-              placeholder="e.g. Before 9am, after 9pm, 12–1pm lunch break every day"
-              value={form.doNotScheduleWindows ?? ""}
-              onChange={(e) => update("doNotScheduleWindows", e.target.value)}
-            />
-          </div>
-
-          {/* Schedule intensity */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Schedule intensity
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {(["light", "moderate", "intense"] as const).map((lvl) => (
-                <button
-                  key={lvl}
-                  onClick={() => update("scheduleIntensity", lvl)}
-                  className={`py-3 rounded-lg border text-sm capitalize transition-colors ${
-                    form.scheduleIntensity === lvl
-                      ? "bg-indigo-600 border-indigo-500 text-white"
-                      : "bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500"
-                  }`}
-                >
-                  {lvl === "light"
-                    ? "🌱 Light"
-                    : lvl === "moderate"
-                      ? "⚡ Moderate"
-                      : "🔥 Intense"}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              {form.scheduleIntensity === "light"
-                ? "Relaxed pace — a few focused tasks per day, plenty of breathing room."
-                : form.scheduleIntensity === "moderate"
-                  ? "Balanced mix of productivity and rest."
-                  : "Packed schedule — maximize every available slot."}
-            </p>
-          </div>
         </div>
       ),
     },
@@ -392,7 +351,34 @@ export default function OnboardingSurvey({ onComplete }: Props) {
 
   const handleNext = () => {
     if (isLast) {
-      onComplete({ ...form, completed: true } as UserProfile);
+      // If meal toggles are off, clear the corresponding times
+      const finalForm = { ...form };
+      if (!breakfastEnabled) {
+        finalForm.breakfastTime = "";
+        finalForm.breakfastDurationMinutes = 0;
+      }
+      if (!lunchEnabled) {
+        finalForm.lunchStart = "";
+        finalForm.lunchDurationMinutes = 0;
+      }
+      if (!dinnerEnabled) {
+        finalForm.dinnerTime = "";
+        finalForm.dinnerDurationMinutes = 0;
+      }
+      onComplete({
+        ...finalForm,
+        completed: true,
+        // Defaults for fields not in form
+        name: finalForm.name ?? "",
+        careerGoals: finalForm.careerGoals ?? "",
+        professionalInterests: finalForm.professionalInterests ?? "",
+        targetIndustries: finalForm.targetIndustries ?? "",
+        dailyHoursAvailable: finalForm.dailyHoursAvailable ?? 4,
+        preferredStartTime: finalForm.preferredStartTime ?? "09:00",
+        preferredEndTime: finalForm.preferredEndTime ?? "22:00",
+        typicalDaySnapshot: finalForm.typicalDaySnapshot ?? "",
+        scheduleBlocks: finalForm.scheduleBlocks ?? [],
+      } as UserProfile);
     } else {
       setStep((s) => s + 1);
     }

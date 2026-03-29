@@ -1,18 +1,16 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAppStore } from "@/store/appStore";
-import { UserProfile } from "@/types";
+import { UserProfile, ScheduleBlock, ScheduleBlockRecurrence } from "@/types";
 import { saveProfile, clearCalendarAndDecisions } from "@/lib/supabaseSync";
 
-const DAYS = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
+const RECURRENCE_LABELS: Record<ScheduleBlockRecurrence, string> = {
+  none: "One-time",
+  daily: "Daily",
+  weekly: "Weekly",
+  weekdays: "Weekdays",
+  weekends: "Weekends",
+};
 
 interface PreferencesProps {
   userId?: string | null;
@@ -24,20 +22,24 @@ export default function PreferencesView({ userId }: PreferencesProps) {
   const [saved, setSaved] = useState(false);
   const [resetting, setResetting] = useState(false);
 
+  // Schedule block form state
+  const [blockName, setBlockName] = useState("");
+  const [blockStart, setBlockStart] = useState("09:00");
+  const [blockEnd, setBlockEnd] = useState("10:00");
+  const [blockDate, setBlockDate] = useState("");
+  const [blockRecurrence, setBlockRecurrence] = useState<ScheduleBlockRecurrence>("weekly");
+
+  // Sync form when profile loads from Supabase after mount
+  useEffect(() => {
+    setForm({ ...profile });
+  }, [profile]);
+
   const update = (key: keyof UserProfile, value: unknown) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     setSaved(false);
   };
 
-  const toggleDay = (day: string) => {
-    const days = form.doNotScheduleDays ?? [];
-    update(
-      "doNotScheduleDays",
-      days.includes(day) ? days.filter((d) => d !== day) : [...days, day],
-    );
-  };
-
-  const handleSave = () => {
+const handleSave = () => {
     updateProfile(form);
     if (userId) {
       saveProfile(userId, form);
@@ -54,6 +56,33 @@ export default function PreferencesView({ userId }: PreferencesProps) {
       await clearCalendarAndDecisions(userId);
     }
     setResetting(false);
+  };
+
+  const addScheduleBlock = () => {
+    if (!blockName.trim() || !blockStart || !blockEnd) return;
+    if ((blockRecurrence === 'none' || blockRecurrence === 'weekly') && !blockDate) return;
+    const newBlock: ScheduleBlock = {
+      id: crypto.randomUUID(),
+      name: blockName.trim(),
+      startTime: blockStart,
+      endTime: blockEnd,
+      date: blockDate || undefined,
+      recurrence: blockRecurrence,
+    };
+    const next = [...(profile.scheduleBlocks ?? []), newBlock];
+    updateProfile({ ...profile, scheduleBlocks: next });
+    setForm((prev) => ({ ...prev, scheduleBlocks: next }));
+    setBlockName("");
+    setBlockStart("09:00");
+    setBlockEnd("10:00");
+    setBlockDate("");
+    setBlockRecurrence("weekly");
+  };
+
+  const removeScheduleBlock = (id: string) => {
+    const next = (profile.scheduleBlocks ?? []).filter((b) => b.id !== id);
+    updateProfile({ ...profile, scheduleBlocks: next });
+    setForm((prev) => ({ ...prev, scheduleBlocks: next }));
   };
 
   return (
@@ -163,32 +192,166 @@ export default function PreferencesView({ userId }: PreferencesProps) {
         </div>
       </section>
 
-      {/* Schedule */}
+      {/* Daily Routine */}
       <section className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-4">
-        <h2 className="font-semibold text-white">Work Hours &amp; Schedule</h2>
-        <div>
-          <label className="block text-sm text-gray-400 mb-1.5">
-            Hours available per day:{" "}
-            <span className="text-indigo-400 font-bold">
-              {form.dailyHoursAvailable}h
-            </span>
-          </label>
-          <input
-            type="range"
-            min={1}
-            max={10}
-            value={form.dailyHoursAvailable}
-            onChange={(e) =>
-              update("dailyHoursAvailable", Number(e.target.value))
-            }
-            className="w-full accent-indigo-500"
-          />
-        </div>
+        <h2 className="font-semibold text-white">Daily Routine</h2>
+
+        {/* Wake / Sleep */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-1.5">
-              Start time
-            </label>
+            <label className="block text-sm text-gray-400 mb-1.5">Wake up</label>
+            <input type="time" className="w-full bg-gray-700 text-white rounded-lg p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
+              value={form.wakeTime ?? "07:30"} onChange={(e) => update("wakeTime", e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1.5">Sleep time</label>
+            <input type="time" className="w-full bg-gray-700 text-white rounded-lg p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
+              value={form.sleepTime ?? "23:00"} onChange={(e) => update("sleepTime", e.target.value)} />
+          </div>
+        </div>
+
+        {/* Breakfast */}
+        <div className="border border-gray-600/60 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-gray-300">Breakfast</label>
+            <button
+              onClick={() => update("breakfastTime", form.breakfastTime ? "" : "07:30")}
+              className={`text-xs px-2.5 py-1 rounded-full border font-semibold transition-colors ${
+                form.breakfastTime
+                  ? "bg-indigo-600 border-indigo-500 text-white"
+                  : "bg-gray-700 border-gray-600 text-gray-400"
+              }`}
+            >
+              {form.breakfastTime ? "On" : "N/A"}
+            </button>
+          </div>
+          {form.breakfastTime ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Time</p>
+                <input type="time" value={form.breakfastTime}
+                  onChange={(e) => update("breakfastTime", e.target.value)}
+                  className="w-full bg-gray-700 text-white rounded-lg p-2 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Duration: <span className="text-indigo-400 font-bold">{form.breakfastDurationMinutes ?? 30} min</span></p>
+                <input type="range" min={20} max={90} step={5}
+                  value={form.breakfastDurationMinutes ?? 30}
+                  onChange={(e) => update("breakfastDurationMinutes", Number(e.target.value))}
+                  className="w-full accent-indigo-500 mt-2" />
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-600">Not scheduled — toggle On to add a breakfast block.</p>
+          )}
+        </div>
+
+        {/* Lunch */}
+        <div className="border border-gray-600/60 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-gray-300">Lunch</label>
+            <button
+              onClick={() => update("lunchStart", form.lunchStart ? "" : "12:00")}
+              className={`text-xs px-2.5 py-1 rounded-full border font-semibold transition-colors ${
+                form.lunchStart
+                  ? "bg-indigo-600 border-indigo-500 text-white"
+                  : "bg-gray-700 border-gray-600 text-gray-400"
+              }`}
+            >
+              {form.lunchStart ? "On" : "N/A"}
+            </button>
+          </div>
+          {form.lunchStart ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Time</p>
+                <input type="time" value={form.lunchStart}
+                  onChange={(e) => update("lunchStart", e.target.value)}
+                  className="w-full bg-gray-700 text-white rounded-lg p-2 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Duration: <span className="text-indigo-400 font-bold">{form.lunchDurationMinutes ?? 60} min</span></p>
+                <input type="range" min={20} max={120} step={10}
+                  value={form.lunchDurationMinutes ?? 60}
+                  onChange={(e) => update("lunchDurationMinutes", Number(e.target.value))}
+                  className="w-full accent-indigo-500 mt-2" />
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-600">Not scheduled — toggle On to add a lunch block.</p>
+          )}
+        </div>
+
+        {/* Dinner */}
+        <div className="border border-gray-600/60 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-gray-300">Dinner</label>
+            <button
+              onClick={() => update("dinnerTime", form.dinnerTime ? "" : "18:30")}
+              className={`text-xs px-2.5 py-1 rounded-full border font-semibold transition-colors ${
+                form.dinnerTime
+                  ? "bg-indigo-600 border-indigo-500 text-white"
+                  : "bg-gray-700 border-gray-600 text-gray-400"
+              }`}
+            >
+              {form.dinnerTime ? "On" : "N/A"}
+            </button>
+          </div>
+          {form.dinnerTime ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Time</p>
+                <input type="time" value={form.dinnerTime}
+                  onChange={(e) => update("dinnerTime", e.target.value)}
+                  className="w-full bg-gray-700 text-white rounded-lg p-2 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Duration: <span className="text-indigo-400 font-bold">{form.dinnerDurationMinutes ?? 60} min</span></p>
+                <input type="range" min={30} max={120} step={10}
+                  value={form.dinnerDurationMinutes ?? 60}
+                  onChange={(e) => update("dinnerDurationMinutes", Number(e.target.value))}
+                  className="w-full accent-indigo-500 mt-2" />
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-600">Not scheduled — toggle On to add a dinner block.</p>
+          )}
+        </div>
+      </section>
+
+      {/* Work Hours & Schedule */}
+      <section className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-4">
+        <h2 className="font-semibold text-white">Work Hours &amp; Schedule</h2>
+
+        {/* Workload picker */}
+        <div>
+          <label className="block text-sm text-gray-400 mb-2">Schedule intensity</label>
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { value: "light", label: "🌱 Light", sub: "0–4h/day" },
+              { value: "moderate", label: "⚡ Moderate", sub: "4–7h/day" },
+              { value: "heavy", label: "🔥 Heavy", sub: "7–9h/day" },
+              { value: "insane", label: "💀 Insane", sub: "9–16h/day" },
+            ] as const).map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => update("scheduleIntensity", opt.value)}
+                className={`py-3 px-4 rounded-xl border text-left transition-colors ${
+                  form.scheduleIntensity === opt.value
+                    ? "bg-indigo-600 border-indigo-500 text-white"
+                    : "bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500"
+                }`}
+              >
+                <div className="text-sm font-medium">{opt.label}</div>
+                <div className="text-xs opacity-70 mt-0.5">{opt.sub}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-1.5">Start time</label>
             <input
               type="time"
               className="w-full bg-gray-700 text-white rounded-lg p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
@@ -197,35 +360,13 @@ export default function PreferencesView({ userId }: PreferencesProps) {
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-1.5">
-              End time
-            </label>
+            <label className="block text-sm text-gray-400 mb-1.5">End time</label>
             <input
               type="time"
               className="w-full bg-gray-700 text-white rounded-lg p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
               value={form.preferredEndTime}
               onChange={(e) => update("preferredEndTime", e.target.value)}
             />
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm text-gray-400 mb-2">
-            Schedule intensity
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            {(["light", "moderate", "intense"] as const).map((lvl) => (
-              <button
-                key={lvl}
-                onClick={() => update("scheduleIntensity", lvl)}
-                className={`py-2 rounded-lg border text-xs capitalize transition-colors ${
-                  form.scheduleIntensity === lvl
-                    ? "bg-indigo-600 border-indigo-500 text-white"
-                    : "bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500"
-                }`}
-              >
-                {lvl}
-              </button>
-            ))}
           </div>
         </div>
       </section>
@@ -245,39 +386,86 @@ export default function PreferencesView({ userId }: PreferencesProps) {
         </button>
       </section>
 
-      {/* Blocked time */}
+      {/* Scheduling Constraints */}
       <section className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-4">
-        <h2 className="font-semibold text-white">Scheduling Constraints</h2>
         <div>
-          <label className="block text-sm text-gray-400 mb-2">
-            No-schedule days
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {DAYS.map((day) => (
-              <button
-                key={day}
-                onClick={() => toggleDay(day)}
-                className={`py-1 px-3 rounded-full border text-xs transition-colors ${
-                  (form.doNotScheduleDays ?? []).includes(day)
-                    ? "bg-red-600 border-red-500 text-white"
-                    : "bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500"
-                }`}
-              >
-                {day}
-              </button>
+          <h2 className="font-semibold text-white">Blocked Time</h2>
+          <p className="text-xs text-gray-500 mt-0.5">These show as unavailable on your calendar and are skipped by the scheduler.</p>
+        </div>
+
+        {/* Existing blocks */}
+        {(form.scheduleBlocks ?? []).length === 0 ? (
+          <p className="text-xs text-gray-600">No blocked times added yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {(form.scheduleBlocks ?? []).map((b) => (
+              <div key={b.id} className="flex items-center justify-between bg-gray-700/60 rounded-xl px-3 py-2.5 border border-gray-600/50">
+                <div className="min-w-0">
+                  <p className="text-sm text-white font-medium">{b.name}</p>
+                  <p className="text-xs text-gray-400">
+                    {b.startTime}–{b.endTime} · {RECURRENCE_LABELS[b.recurrence]}
+                    {b.date ? ` · ${b.date}` : ""}
+                  </p>
+                </div>
+                <button onClick={() => removeScheduleBlock(b.id)} className="text-gray-500 hover:text-red-400 transition-colors ml-3 shrink-0">✕</button>
+              </div>
             ))}
           </div>
-        </div>
-        <div>
-          <label className="block text-sm text-gray-400 mb-1.5">
-            Time windows to avoid
-          </label>
+        )}
+
+        {/* Add new block form */}
+        <div className="border border-gray-600/60 rounded-xl p-4 space-y-3">
+          <p className="text-sm font-medium text-gray-300">Add blocked time</p>
+
           <input
-            type="text"
-            className="w-full bg-gray-700 text-white rounded-lg p-2.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-sm"
-            value={form.doNotScheduleWindows}
-            onChange={(e) => update("doNotScheduleWindows", e.target.value)}
+            value={blockName}
+            onChange={(e) => setBlockName(e.target.value)}
+            placeholder="Event name (e.g. Gym, No work)"
+            className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none placeholder-gray-500"
           />
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Start time</label>
+              <input type="time" value={blockStart} onChange={(e) => setBlockStart(e.target.value)}
+                className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">End time</label>
+              <input type="time" value={blockEnd} onChange={(e) => setBlockEnd(e.target.value)}
+                className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Repeats</label>
+            <div className="flex flex-wrap gap-1.5">
+              {(Object.keys(RECURRENCE_LABELS) as ScheduleBlockRecurrence[]).map((r) => (
+                <button key={r} onClick={() => setBlockRecurrence(r)}
+                  className={`px-3 py-1 rounded-full text-xs border transition-colors ${blockRecurrence === r ? "bg-indigo-600 border-indigo-500 text-white" : "bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500"}`}>
+                  {RECURRENCE_LABELS[r]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {(blockRecurrence === 'none' || blockRecurrence === 'weekly') && (
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                {blockRecurrence === 'none' ? 'Date' : 'Starting date (sets day of week)'}
+              </label>
+              <input type="date" value={blockDate} onChange={(e) => setBlockDate(e.target.value)}
+                className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none" />
+            </div>
+          )}
+
+          <button
+            onClick={addScheduleBlock}
+            disabled={!blockName.trim() || !blockStart || !blockEnd || ((blockRecurrence === 'none' || blockRecurrence === 'weekly') && !blockDate)}
+            className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+          >
+            Add Block
+          </button>
         </div>
       </section>
     </div>

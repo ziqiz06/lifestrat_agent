@@ -1,4 +1,10 @@
-import { CalendarTask, UserProfile, TimeBlock, ScheduleResult } from '@/types';
+import { CalendarTask, UserProfile, TimeBlock, ScheduleResult, TaskStatus, ScheduleBlock } from '@/types';
+
+export interface BlockedInterval {
+  start: number; // minutes from midnight
+  end: number;
+  label: string; // human-readable, e.g. "lunch time", "sleep time", "Gym"
+}
 
 // Task types considered "fixed" (anchored to a real time)
 const FIXED_TYPES = new Set([
@@ -18,6 +24,62 @@ export function minutesToTime(m: number): string {
   const h = Math.floor(m / 60);
   const min = m % 60;
   return `${String(Math.min(h, 23)).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+/**
+ * Returns whether a ScheduleBlock applies to a given date based on its recurrence.
+ */
+export function scheduleBlockAppliesToDate(block: ScheduleBlock, date: string): boolean {
+  const d = new Date(date + 'T00:00:00');
+  const dow = d.getDay(); // 0=Sun … 6=Sat
+  switch (block.recurrence) {
+    case 'none': return block.date === date;
+    case 'daily': return true;
+    case 'weekly': {
+      if (!block.date) return false;
+      return new Date(block.date + 'T00:00:00').getDay() === dow;
+    }
+    case 'weekdays': return dow >= 1 && dow <= 5;
+    case 'weekends': return dow === 0 || dow === 6;
+  }
+}
+
+/**
+ * Returns all blocked intervals for a given date from the user's profile.
+ * Includes sleep, meals, and all schedule blocks that apply to that date.
+ */
+export function getBlockedIntervalsForDay(profile: UserProfile, date: string): BlockedInterval[] {
+  const intervals: BlockedInterval[] = [];
+
+  if (profile.wakeTime) {
+    intervals.push({ start: 0, end: timeToMinutes(profile.wakeTime), label: 'sleep time' });
+  }
+  if (profile.sleepTime) {
+    intervals.push({ start: timeToMinutes(profile.sleepTime), end: 24 * 60, label: 'sleep time' });
+  }
+  if (profile.breakfastTime && (profile.breakfastDurationMinutes ?? 0) > 0) {
+    const s = timeToMinutes(profile.breakfastTime);
+    intervals.push({ start: s, end: s + profile.breakfastDurationMinutes, label: 'breakfast time' });
+  }
+  if (profile.lunchStart && (profile.lunchDurationMinutes ?? 0) > 0) {
+    const s = timeToMinutes(profile.lunchStart);
+    intervals.push({ start: s, end: s + profile.lunchDurationMinutes, label: 'lunch time' });
+  }
+  if (profile.dinnerTime && (profile.dinnerDurationMinutes ?? 0) > 0) {
+    const s = timeToMinutes(profile.dinnerTime);
+    intervals.push({ start: s, end: s + profile.dinnerDurationMinutes, label: 'dinner time' });
+  }
+  for (const block of profile.scheduleBlocks ?? []) {
+    if (scheduleBlockAppliesToDate(block, date)) {
+      intervals.push({
+        start: timeToMinutes(block.startTime),
+        end: timeToMinutes(block.endTime),
+        label: block.name,
+      });
+    }
+  }
+
+  return intervals;
 }
 
 /**
@@ -48,6 +110,20 @@ export function getAvailableTimeBlocks(
     start: timeToMinutes(e.startTime),
     end: timeToMinutes(e.endTime) + BUFFER,
   }));
+
+  // Add lifestyle blocks from profile
+  if (profile.breakfastTime && profile.breakfastDurationMinutes > 0) {
+    const s = timeToMinutes(profile.breakfastTime);
+    blocked.push({ start: s, end: s + profile.breakfastDurationMinutes });
+  }
+  if (profile.lunchStart && profile.lunchDurationMinutes > 0) {
+    const s = timeToMinutes(profile.lunchStart);
+    blocked.push({ start: s, end: s + profile.lunchDurationMinutes });
+  }
+  if (profile.dinnerTime && profile.dinnerDurationMinutes > 0) {
+    const s = timeToMinutes(profile.dinnerTime);
+    blocked.push({ start: s, end: s + profile.dinnerDurationMinutes });
+  }
 
   // Sort and merge overlapping blocked intervals
   blocked.sort((a, b) => a.start - b.start);
@@ -82,10 +158,25 @@ export function getAvailableTimeBlocks(
   return blocks;
 }
 
+// Workload budget in minutes per intensity level
+const WORKLOAD_MINUTES: Record<string, number> = {
+  light: 4 * 60,
+  moderate: 6 * 60,
+  heavy: 8 * 60,
+  insane: 16 * 60,
+};
+
+const BUFFER_BETWEEN = 10; // minutes between flex tasks
+const MIN_SLOT = 20;       // smallest slot worth placing a task into
+
 /**
- * Schedules flexible tasks into available time blocks.
- * Tasks are expected to be pre-sorted by priority (highest first).
- * Respects intensity: light = max 60% of blocks, moderate = 80%, intense = 100%.
+ * Schedules flexible tasks into available time blocks following strict rules:
+ * - Tasks sorted by urgency (deadline) then priority
+ * - Sequential stacking, prefer contiguous blocks
+ * - Split tasks across blocks only when needed, label continuations "(continued)"
+ * - Hard workload budget; overflow tasks marked 'deferred'
+ * - Same-day deadline tasks that exceed budget marked 'needs_confirmation'
+ * - Status label attached to every output task
  */
 export function scheduleFlexibleTasks(
   flexTasks: CalendarTask[],
@@ -93,46 +184,91 @@ export function scheduleFlexibleTasks(
   profile: UserProfile,
   date: string
 ): ScheduleResult {
-  const intensityFactor = profile.scheduleIntensity === 'light' ? 0.6
-    : profile.scheduleIntensity === 'moderate' ? 0.8 : 1.0;
+  const budgetMinutes = WORKLOAD_MINUTES[profile.scheduleIntensity] ?? 6 * 60;
 
   const scheduled: CalendarTask[] = [];
   const deferred: CalendarTask[] = [];
+  let usedMinutes = 0;
 
-  // Work through blocks, filling with tasks
-  const blocks = availableBlocks.map((b) => ({
+  // Mutable cursors for each block
+  const slots = availableBlocks.map((b) => ({
     cursor: timeToMinutes(b.startTime),
     end: timeToMinutes(b.endTime),
-    capacity: Math.floor(b.durationMinutes * intensityFactor),
-    used: 0,
   }));
 
-  let blockIdx = 0;
-
   for (const task of flexTasks) {
-    const durationMin = Math.round(task.type === 'deadline' ? 30 : (
-      // Use hours encoded in the title or fall back to type estimate
-      estimateMinutes(task)
-    ));
+    const totalDuration = estimateMinutes(task);
+    const isDueToday = task.date === date;
+    const withinBudget = usedMinutes + totalDuration <= budgetMinutes;
 
-    let placed = false;
-    while (blockIdx < blocks.length) {
-      const block = blocks[blockIdx];
-      const remaining = block.end - block.cursor;
-      if (remaining >= durationMin && block.used + durationMin <= block.capacity) {
-        const startTime = minutesToTime(block.cursor);
-        const endTime = minutesToTime(block.cursor + durationMin);
-        scheduled.push({ ...task, date, startTime, endTime, flex: 'flexible' });
-        block.cursor += durationMin + 10; // 10 min break between flex tasks
-        block.used += durationMin;
-        placed = true;
-        break;
-      } else {
-        blockIdx++;
-      }
+    // If this task would exceed budget and is not due today, defer it
+    if (!withinBudget && !isDueToday) {
+      deferred.push({
+        ...task,
+        flex: 'flexible',
+        status: 'deferred' as TaskStatus,
+      });
+      continue;
     }
-    if (!placed) {
-      deferred.push({ ...task, flex: 'flexible' });
+
+    // Try to place the task, splitting across slots if necessary
+    let remaining = totalDuration;
+    let blockIndex = -1; // first slot index used for this task
+    const placedBlocks: CalendarTask[] = [];
+
+    for (let si = 0; si < slots.length && remaining > 0; si++) {
+      const slot = slots[si];
+      const available = slot.end - slot.cursor;
+      if (available < MIN_SLOT) continue;
+
+      const chunk = Math.min(remaining, available);
+      const startTime = minutesToTime(slot.cursor);
+      const endTime = minutesToTime(slot.cursor + chunk);
+      const isContinuation = placedBlocks.length > 0;
+      const title = isContinuation ? `${task.title} (continued)` : task.title;
+      const status: TaskStatus = (!withinBudget && isDueToday) ? 'needs_confirmation' : 'confirmed';
+
+      placedBlocks.push({
+        ...task,
+        id: isContinuation ? `${task.id}-cont-${si}` : task.id,
+        title,
+        date,
+        startTime,
+        endTime,
+        flex: 'flexible',
+        status,
+        splitGroup: totalDuration > chunk ? task.id : undefined,
+        confirmed: status === 'needs_confirmation' ? false : task.confirmed,
+      });
+
+      if (blockIndex === -1) blockIndex = si;
+      slot.cursor += chunk + BUFFER_BETWEEN;
+      remaining -= chunk;
+    }
+
+    if (placedBlocks.length > 0) {
+      // Annotate total scheduled minutes across all blocks
+      const scheduledMins = totalDuration - remaining;
+      const annotated = placedBlocks.map((b) => ({
+        ...b,
+        totalScheduledMinutes: scheduledMins,
+      }));
+      scheduled.push(...annotated);
+      usedMinutes += scheduledMins;
+
+      // If still has remaining (task too large for all free space)
+      if (remaining > 0) {
+        deferred.push({
+          ...task,
+          flex: 'flexible',
+          status: 'unscheduled' as TaskStatus,
+          title: `${task.title} (${Math.round(remaining / 60 * 10) / 10}h remaining)`,
+        });
+      }
+    } else {
+      // No slot fit at all
+      const status: TaskStatus = isDueToday ? 'needs_confirmation' : 'deferred';
+      deferred.push({ ...task, flex: 'flexible', status });
     }
   }
 
