@@ -783,6 +783,38 @@ export default function CharacterView() {
               })}
             </div>
 
+            {!editingAppearance && (
+              <div className="flex items-center gap-4 pt-3 border-t border-gray-700/40">
+                <div
+                  className="p-3 border shrink-0"
+                  style={{
+                    borderColor: `${palette.glow}25`,
+                    background: `radial-gradient(ellipse at center, ${palette.glow}12, transparent 70%), #111827`,
+                  }}
+                >
+                  <PixelSprite
+                    palette={palette}
+                    scale={5}
+                    animated
+                    signals={character.signals}
+                    appearance={character.appearance}
+                    level={character.level}
+                  />
+                </div>
+                <div>
+                  <p style={{ ...MONO, color: palette.glow }} className="text-sm font-semibold">
+                    {OUTFIT_TIER_LABELS[getOutfitTier(character.level)]} outfit
+                  </p>
+                  <p style={MONO} className="text-xs text-gray-600 mt-0.5">
+                    Hair · Eyes · Face shape customisable
+                  </p>
+                  <p style={MONO} className="text-xs text-gray-600">
+                    Colors &amp; outfit upgrade with level
+                  </p>
+                </div>
+              </div>
+            )}
+
             {editingAppearance && (
               <div className="flex flex-col sm:flex-row gap-6 items-start pt-3 border-t border-gray-700/60">
                 {/* Live preview */}

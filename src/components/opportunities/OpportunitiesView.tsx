@@ -147,12 +147,6 @@ function OpportunityCard({ opp, accent }: { opp: Opportunity; accent: string }) 
     }
   };
 
-  const borderStyle: React.CSSProperties = opp.interested === false
-    ? { border: `1px solid #37415155` }
-    : opp.addedToCalendar
-      ? { border: `1px solid ${catColor}80` }
-      : { border: `1px solid ${catColor}45` };
-
   return (
     <>
       {showModal && (
@@ -166,15 +160,17 @@ function OpportunityCard({ opp, accent }: { opp: Opportunity; accent: string }) 
         />
       )}
       <div
-        className={`bg-gray-900 p-5 transition-all ${opp.interested === false ? "opacity-50" : ""}`}
-        style={borderStyle}
+        className={`bg-gray-900 p-5 border border-gray-700 transition-all ${opp.interested === false ? "opacity-50" : "hover:border-gray-600"}`}
       >
         <div className="flex items-start gap-3 mb-3">
           <PriorityBadge priority={opp.priority} />
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-white text-base mb-0.5" style={MONO}>{opp.title}</h3>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm px-2 py-0.5 border border-gray-700 text-gray-500" style={MONO}>
+              <span
+                className="text-sm px-2 py-0.5 text-gray-500"
+                style={{ ...MONO, border: `2px solid ${catColor}90` }}
+              >
                 {CATEGORY_LABELS[opp.category]}
               </span>
               {opp.deadline && (

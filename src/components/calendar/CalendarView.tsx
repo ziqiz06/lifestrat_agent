@@ -234,12 +234,13 @@ function TaskBlock({
           )}
         </div>
         <p
-          className="text-[11px] font-semibold text-white leading-tight"
+          className="text-[15px] font-semibold text-white leading-tight"
           style={{
             display: "-webkit-box",
             WebkitLineClamp: isTall ? 2 : 1,
             WebkitBoxOrient: "vertical",
             overflow: "hidden",
+            letterSpacing: "0.06em",
             ...DOT,
           }}
         >
