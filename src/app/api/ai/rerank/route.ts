@@ -4,33 +4,44 @@ const API_URL = process.env.K2_API_URL!;
 const API_KEY = process.env.K2_API_KEY!;
 const MODEL   = process.env.K2_MODEL ?? 'MBZUAI-IFM/K2-Think-v2';
 
-const SYSTEM_PROMPT = `You are an expert career advisor helping a college student prioritize opportunities.
+const SYSTEM_PROMPT = `You are ranking opportunities for career relevance.
 
-You will receive:
-1. A user profile (career goals, interests, target industries, experience level)
-2. A list of opportunities already scored by a heuristic ranker
+Your job is to assign an aiPriority from 1 to 10 for each opportunity based primarily on how well it aligns with the user's career direction.
 
-Your job is to re-rank them using deeper semantic reasoning — considering career trajectory, strategic timing, competitive advantage, and genuine fit with the user's goals.
+Prioritize:
+1. long-term career goal alignment
+2. alignment with target roles / industries
+3. meaningful career advancement value
+4. semantic relevance, even when exact wording differs
 
-CRITICAL OUTPUT REQUIREMENT:
-Respond with ONLY a valid JSON object. No markdown, no prose, no explanation — just raw JSON.
+Important:
+Do not rely mainly on exact keyword overlap.
+Use conceptual matching.
+Related concepts should count as strong relevance.
 
+Examples:
+- "diplomat" is strongly related to "foreign service", "diplomacy", "international affairs", "diplomatic history", and "government policy"
+- "finance" is related to "banking", "investing", "markets", and "valuation"
+- "software engineering" is related to "backend", "frontend", "systems", "coding", and "product engineering"
+
+Scoring guide:
+1-2 = not relevant
+3-4 = weakly relevant
+5-6 = somewhat relevant
+7-8 = clearly relevant
+9-10 = strongly aligned with the user's career direction
+
+Return JSON only in this exact format, no markdown, no prose:
 {
-  "reranked": [
-    { "id": "<opp id>", "aiPriority": <integer 1-10>, "aiReason": "<1 concise sentence>" }
-  ],
-  "summary": "<1-2 sentences on the overall ranking rationale>"
+  "results": [
+    { "opportunityId": "<id>", "aiPriority": <integer 1-10>, "aiReason": "<short specific reason>" }
+  ]
 }
 
 Rules:
-- Every input opportunity ID must appear in the output exactly once.
-- aiPriority must be an integer 1–10.
-- Strongly boost opportunities that directly match the user's stated career goals and interests.
-- For internship applications and recruiting events near deadline, amplify urgency in your ranking.
-- Downrank poor-fit opportunities even if they have high urgency (e.g. club elections, social events, internal announcements).
-- Surface hidden gems — an opportunity may have a low heuristic score but high strategic value.
-- Be specific in aiReason — explain WHY this ranks where it does, not just what it is.
-- Do not simply echo the heuristic score.`;
+- Every input ID must appear in results exactly once
+- aiPriority must be an integer 1–10
+- Keep aiReason short and specific`;
 
 interface OppInput {
   id: string;

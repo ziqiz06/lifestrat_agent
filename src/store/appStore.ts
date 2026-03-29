@@ -1242,10 +1242,15 @@ Return ONLY the JSON object — no markdown, no explanation.`;
             }),
           });
           if (!res.ok) return;
-          const { reranked } = await res.json() as {
-            reranked: Array<{ id: string; aiPriority: number; aiReason: string }>;
+          const parsed = await res.json() as {
+            results?: Array<{ opportunityId: string; aiPriority: number; aiReason: string }>;
+            reranked?: Array<{ id: string; aiPriority: number; aiReason: string }>;
           };
-          const aiMap = new Map(reranked.map(r => [r.id, r]));
+          // Support new shape (results/opportunityId) and old shape (reranked/id)
+          const entries = parsed.results
+            ? parsed.results.map(r => ({ id: r.opportunityId, aiPriority: r.aiPriority, aiReason: r.aiReason }))
+            : (parsed.reranked ?? []);
+          const aiMap = new Map(entries.map(r => [r.id, r]));
           // Store aiRelevanceScore per-opp, then re-run rankOpportunities so the
           // 4-layer weights (with AI) are applied and finalScore is recomputed cleanly.
           const withAIScores = opportunities.map(o => {
