@@ -21,6 +21,8 @@ function getColor(pixel: string, palette: ArchetypePalette): string | null {
   }
 }
 
+export type SpritePose = 'idle' | 'think' | 'ponder';
+
 interface Props {
   palette: ArchetypePalette;
   scale?: number;
@@ -28,6 +30,7 @@ interface Props {
   signals?: StateSignal[];
   appearance?: CharacterAppearance;
   level?: number;
+  pose?: SpritePose;
 }
 
 export default function PixelSprite({
@@ -37,6 +40,7 @@ export default function PixelSprite({
   signals = [],
   appearance = DEFAULT_APPEARANCE,
   level = 1,
+  pose = 'idle',
 }: Props) {
   const W = 16 * scale;
   const H = 20 * scale;
@@ -46,12 +50,22 @@ export default function PixelSprite({
   const isDrifting = signals.includes("drifting");
   const isStretched = signals.includes("stretched");
 
-  const animDuration = isSurging ? "1s" : isDrifting ? "3.5s" : "2s";
+  const baseAnimDuration = isSurging ? "1s" : isDrifting ? "3.5s" : "2s";
   const glowColor = isStretched
     ? "#F97316"
     : isSurging
       ? "#F59E0B"
       : palette.glow;
+
+  const animationName =
+    !animated ? undefined
+    : pose === 'think'  ? `think-bob`
+    : pose === 'ponder' ? `ponder-bob`
+    : `idle-bob`;
+  const animDuration =
+    pose === 'think'  ? "3.2s"
+    : pose === 'ponder' ? "2.4s"
+    : baseAnimDuration;
 
   // Glow radius intensifies at higher levels
   const glowRadius = level >= 7 ? 10 : level >= 5 ? 7 : level >= 3 ? 5 : 4;
@@ -66,8 +80,8 @@ export default function PixelSprite({
         filter: `drop-shadow(0 0 ${isStretched ? 6 : isSurging ? 8 : glowRadius}px ${
           isStretched ? "#F9731688" : isSurging ? "#F59E0B88" : `${glowColor}${glowAlpha}`
         })`,
-        animation: animated
-          ? `idle-bob ${animDuration} ease-in-out infinite`
+        animation: animationName
+          ? `${animationName} ${animDuration} ease-in-out infinite`
           : undefined,
         flexShrink: 0,
       }}

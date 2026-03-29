@@ -19,6 +19,34 @@ body {
     }
 }
 
+/* Thinking pose — leaning left, slow contemplative bob */
+@keyframes think-bob {
+    0%,
+    100% {
+        transform: rotate(-7deg) translateY(0px);
+    }
+    40% {
+        transform: rotate(-9deg) translateY(-7px);
+    }
+    60% {
+        transform: rotate(-6deg) translateY(-5px);
+    }
+}
+
+/* Ponder pose — mirrored, leaning right, playful bounce */
+@keyframes ponder-bob {
+    0%,
+    100% {
+        transform: scaleX(-1) rotate(-5deg) translateY(0px);
+    }
+    30% {
+        transform: scaleX(-1) rotate(-7deg) translateY(-8px);
+    }
+    70% {
+        transform: scaleX(-1) rotate(-3deg) translateY(-3px);
+    }
+}
+
 @keyframes idle-bob-slow {
     0%,
     100% {
