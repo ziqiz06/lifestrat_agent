@@ -582,7 +582,7 @@ function ExpiredCard({ opp }: { opp: Opportunity }) {
 export default function OpportunitiesView() {
   const {
     opportunities, emails, character,
-    rerankWithK2, rerankLoading, reloadOpportunities,
+    rerankWithK2, rerankLoading,
     lastCalendarUndo, undoLastCalendarAction, clearCalendarUndo,
     gmailConnected, setEmails,
   } = useAppStore();
@@ -764,11 +764,6 @@ export default function OpportunitiesView() {
         <div className="shrink-0 flex flex-col items-end gap-3">
           <PixelSprite palette={palette} scale={10} pose="ponder" />
           <div className="flex gap-2 flex-wrap justify-end">
-            <button onClick={() => reloadOpportunities()}
-              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-400 text-sm border border-gray-600 transition-colors"
-              style={MONO}>
-              ↺ Reload
-            </button>
             <button onClick={() => rerankWithK2()} disabled={rerankLoading}
               className="px-3 py-1.5 bg-indigo-800 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-wait text-white text-sm border border-indigo-600 transition-colors"
               style={MONO}>

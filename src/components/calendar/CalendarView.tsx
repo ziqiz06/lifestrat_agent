@@ -758,7 +758,7 @@ function TaskPopover({
   onConfirm: () => void;
   onResolve: (keepId: string) => void;
   onDelete: () => void;
-  onUpdate: (updates: Partial<Pick<CalendarTask, 'title' | 'startTime' | 'endTime' | 'description'>>) => void;
+  onUpdate: (updates: Partial<Pick<CalendarTask, 'title' | 'startTime' | 'endTime' | 'description' | 'flex'>>) => void;
   onAcceptConflict: () => void;
   onUndoOverride: () => void;
   onMarkCompleted: () => void;
@@ -775,6 +775,7 @@ function TaskPopover({
   const [editTitle, setEditTitle] = useState(task.title);
   const [editStart, setEditStart] = useState(task.startTime);
   const [editEnd, setEditEnd] = useState(task.endTime);
+  const [editFlex, setEditFlex] = useState<'fixed' | 'flexible'>(task.flex ?? 'fixed');
 
   // ── Smart positioning ──────────────────────────────────────────────────────
   const GAP = 10;
@@ -1100,10 +1101,22 @@ function TaskPopover({
                       style={MONO} />
                   </div>
                 </div>
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-xs text-gray-400" style={MONO}>
+                    {editFlex === 'flexible' ? 'Flexible · AI may reschedule' : 'Fixed · stays at set time'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setEditFlex(f => f === 'fixed' ? 'flexible' : 'fixed')}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${editFlex === 'flexible' ? 'bg-indigo-600' : 'bg-gray-600'}`}
+                  >
+                    <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transform transition-transform ${editFlex === 'flexible' ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => {
-                      onUpdate({ title: editTitle, startTime: editStart, endTime: editEnd });
+                      onUpdate({ title: editTitle, startTime: editStart, endTime: editEnd, flex: editFlex });
                       setEditing(false);
                       onClose();
                     }}
