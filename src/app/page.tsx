@@ -46,6 +46,7 @@ export default function Home() {
   const [phase, setPhase] = useState<AppPhase>("loading");
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [pendingGmailImport, setPendingGmailImport] = useState<{ providerToken: string; userId: string } | null>(null);
   const supabase = createClient();
 
   // Load user session and their data on mount
@@ -98,11 +99,8 @@ export default function Home() {
         const params = new URLSearchParams(window.location.search);
         if (params.get('gmail') === 'connected') {
           window.history.replaceState({}, '', '/');
-          window.dispatchEvent(
-            new CustomEvent('gmail:connected', {
-              detail: { providerToken: session.provider_token, userId: session.user.id },
-            }),
-          );
+          // Buffer the token — dispatch after OpportunitiesView is mounted (phase === 'app')
+          setPendingGmailImport({ providerToken: session.provider_token, userId: session.user.id });
         }
       }
     });
@@ -228,6 +226,15 @@ export default function Home() {
     if (!userId || phase !== "app") return;
     saveGoals(userId, goals).catch(console.error);
   }, [goals, userId, phase]);
+
+  // Dispatch gmail:connected only after OpportunitiesView is mounted (phase === 'app')
+  useEffect(() => {
+    if (phase !== 'app' || !pendingGmailImport) return;
+    window.dispatchEvent(
+      new CustomEvent('gmail:connected', { detail: pendingGmailImport }),
+    );
+    setPendingGmailImport(null);
+  }, [phase, pendingGmailImport]);
 
   if (phase === "loading") {
     return (
