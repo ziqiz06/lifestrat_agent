@@ -104,7 +104,13 @@ export interface AppState {
   calendarTasks: CalendarTask[];
   conflicts: Conflict[];
   goals: Goal[];
-  activeTab: "dashboard" | "calendar" | "opportunities" | "preferences";
+  activeTab:
+    | "dashboard"
+    | "calendar"
+    | "opportunities"
+    | "preferences"
+    | "character";
+  character: Character | null;
   onboardingComplete: boolean;
   // AI-generated content
   aiInsight: string;
@@ -115,8 +121,8 @@ export interface AppState {
 export interface StrategyAction {
   opportunityId: string;
   title: string;
-  action: string;       // e.g. "Submit: Amazon SDE application"
-  reason: string;       // e.g. "Deadline in 2 days — high career impact"
+  action: string; // e.g. "Submit: Amazon SDE application"
+  reason: string; // e.g. "Deadline in 2 days — high career impact"
   estimatedHours: number;
 }
 
@@ -130,8 +136,42 @@ export interface DailyStrategy {
 }
 
 export interface Plan {
-  name: string;        // "Plan A" or "Plan B"
-  focus: string;       // "Career-Focused"
+  name: string; // "Plan A" or "Plan B"
+  focus: string; // "Career-Focused"
   items: StrategyAction[];
   explanation: string;
+}
+
+// ── Character system types ─────────────────────────────────────────────────────
+
+export interface CharacterStats {
+  focus: number;
+  career: number;
+  vitality: number;
+  social: number;
+  exploration: number;
+}
+
+export type StateSignal =
+  | "finding_rhythm"
+  | "surging"
+  | "narrowing"
+  | "drifting"
+  | "stretched"
+  | "isolated"
+  | "restless"
+  | "steady";
+
+export interface StatSnapshot {
+  date: string; // "YYYY-MM-DD"
+  stats: CharacterStats;
+}
+
+export interface Character {
+  name: string;
+  stats: CharacterStats;
+  level: number;
+  archetype: string;
+  signals: StateSignal[];
+  statHistory: StatSnapshot[];
 }

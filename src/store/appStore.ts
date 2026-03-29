@@ -1,7 +1,14 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { AppState, UserProfile, Goal, CalendarTask } from "@/types";
+import { AppState, UserProfile, Goal, CalendarTask, Character } from "@/types";
+import {
+  computeStats,
+  getLevel,
+  getArchetype,
+  detectSignals,
+  seedHistory,
+} from "@/lib/characterEngine";
 import { mockEmails } from "@/data/mockEmails";
 import { mockCalendarTasks } from "@/data/mockCalendar";
 import { rankOpportunities } from "@/lib/opportunityRanking";
@@ -61,6 +68,7 @@ const DEFAULT_GOALS: Goal[] = [
 ];
 
 interface AppStore extends AppState {
+  character: Character | null;
   setActiveTab: (tab: AppState["activeTab"]) => void;
   completeOnboarding: (profile: UserProfile) => void;
   updateProfile: (profile: Partial<UserProfile>) => void;
@@ -75,6 +83,8 @@ interface AppStore extends AppState {
   setGoals: (goals: Goal[]) => void;
   computeStrategy: () => void;
   resetStore: () => void;
+  createCharacter: (name: string) => void;
+  refreshCharacterStats: () => void;
 }
 
 export const useAppStore = create<AppStore>()(
@@ -94,8 +104,40 @@ export const useAppStore = create<AppStore>()(
       aiInsight: "",
       aiInsightLoading: false,
       dailyStrategy: null,
+      character: null,
 
       setActiveTab: (tab) => set({ activeTab: tab }),
+
+      createCharacter: (name) => {
+        const tasks = get().calendarTasks;
+        const stats = computeStats(tasks);
+        const level = getLevel(stats);
+        const archetype = getArchetype(stats);
+        const signals = detectSignals(stats);
+        const statHistory = seedHistory(stats);
+        set({
+          character: { name, stats, level, archetype, signals, statHistory },
+        });
+      },
+
+      refreshCharacterStats: () => {
+        const char = get().character;
+        if (!char) return;
+        const tasks = get().calendarTasks;
+        const stats = computeStats(tasks);
+        const level = getLevel(stats);
+        const archetype = getArchetype(stats);
+        const signals = detectSignals(stats);
+        const today = new Date().toISOString().slice(0, 10);
+        const lastSnap = char.statHistory[char.statHistory.length - 1];
+        const statHistory =
+          lastSnap?.date === today
+            ? [...char.statHistory.slice(0, -1), { date: today, stats }]
+            : [...char.statHistory.slice(-29), { date: today, stats }];
+        set({
+          character: { ...char, stats, level, archetype, signals, statHistory },
+        });
+      },
 
       computeStrategy: () => {
         const { opportunities, profile } = get();
@@ -354,10 +396,10 @@ Format your response as:
             DEFAULT_PROFILE,
           ),
           onboardingComplete: false,
-          aiInsight: '',
+          aiInsight: "",
           aiInsightLoading: false,
           dailyStrategy: null,
-          activeTab: 'dashboard',
+          activeTab: "dashboard",
         });
       },
     }),
