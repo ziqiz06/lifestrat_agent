@@ -12,13 +12,116 @@ import {
   EYE_OPTIONS,
   FACE_OPTIONS,
 } from "@/lib/characterEngine";
+import type { ArchetypePalette } from "@/lib/characterEngine";
 import PixelSprite from "./PixelSprite";
 import type {
   CharacterStats,
   StatSnapshot,
-  StateSignal,
   CharacterAppearance,
 } from "@/types";
+
+// ── Radar / pentagon stat chart ───────────────────────────────────────────────
+function RadarChart({
+  stats,
+  palette,
+}: {
+  stats: CharacterStats;
+  palette: ArchetypePalette;
+}) {
+  const CX = 100,
+    CY = 105,
+    R = 72;
+  const keys: (keyof CharacterStats)[] = [
+    "focus",
+    "career",
+    "vitality",
+    "social",
+    "exploration",
+  ];
+  const ang = (i: number) => (Math.PI * 2 * i) / 5 - Math.PI / 2;
+  const px = (i: number, r: number) => CX + r * Math.cos(ang(i));
+  const py = (i: number, r: number) => CY + r * Math.sin(ang(i));
+
+  const statPts = keys
+    .map((k, i) => `${px(i, (stats[k] / 100) * R)},${py(i, (stats[k] / 100) * R)}`)
+    .join(" ");
+
+  return (
+    <svg viewBox="0 0 200 220" className="w-full max-w-50 mx-auto">
+      {/* Grid polygons */}
+      {[0.25, 0.5, 0.75, 1].map((lvl) => (
+        <polygon
+          key={lvl}
+          points={keys
+            .map((_, i) => `${px(i, lvl * R)},${py(i, lvl * R)}`)
+            .join(" ")}
+          fill="none"
+          stroke={lvl === 1 ? "#374151" : "#1F2937"}
+          strokeWidth={lvl === 1 ? 1 : 0.5}
+        />
+      ))}
+      {/* Axis lines */}
+      {keys.map((_, i) => (
+        <line
+          key={i}
+          x1={CX}
+          y1={CY}
+          x2={px(i, R)}
+          y2={py(i, R)}
+          stroke="#1F2937"
+          strokeWidth={0.75}
+        />
+      ))}
+      {/* Filled area */}
+      <polygon
+        points={statPts}
+        fill={`${palette.glow}20`}
+        stroke={palette.glow}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+      />
+      {/* Stat dots */}
+      {keys.map((k, i) => (
+        <circle
+          key={k}
+          cx={px(i, (stats[k] / 100) * R)}
+          cy={py(i, (stats[k] / 100) * R)}
+          r={3.5}
+          fill={STAT_META[k].color}
+          stroke="#111827"
+          strokeWidth={0.75}
+        />
+      ))}
+      {/* Labels */}
+      {keys.map((k, i) => {
+        const lr = R + 18;
+        return (
+          <g key={k}>
+            <text
+              x={px(i, lr)}
+              y={py(i, lr) - 3}
+              textAnchor="middle"
+              fontSize={7}
+              fill={STAT_META[k].color}
+              fontWeight="600"
+            >
+              {STAT_META[k].label.slice(0, 3).toUpperCase()}
+            </text>
+            <text
+              x={px(i, lr)}
+              y={py(i, lr) + 7}
+              textAnchor="middle"
+              fontSize={6.5}
+              fill="#9CA3AF"
+            >
+              {stats[k]}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
 
 // ── Sparkline trend graph ─────────────────────────────────────────────────────
 function TrendGraph({ history }: { history: StatSnapshot[] }) {
@@ -50,7 +153,7 @@ function TrendGraph({ history }: { history: StatSnapshot[] }) {
         className="w-full"
         style={{ minWidth: 200 }}
       >
-        {/* Grid lines at 25/50/75 */}
+        {/* Grid lines */}
         {[25, 50, 75].map((y) => (
           <g key={y}>
             <line
@@ -92,7 +195,6 @@ function TrendGraph({ history }: { history: StatSnapshot[] }) {
                 strokeLinejoin="round"
                 opacity={0.85}
               />
-              {/* Latest dot */}
               <circle
                 cx={PAD + (history.length - 1) * xStep}
                 cy={
@@ -268,7 +370,6 @@ function CharacterSetup() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
-      {/* Header */}
       <div className="text-center mb-8">
         <h1 className="text-2xl font-bold text-white mb-2">
           Create Your Character
@@ -280,7 +381,6 @@ function CharacterSetup() {
         </p>
       </div>
 
-      {/* Two-column layout: preview left, options right */}
       <div className="flex flex-col sm:flex-row gap-8 items-start">
         {/* Live sprite preview */}
         <div className="shrink-0 flex flex-col items-center gap-3 sm:sticky sm:top-24 mx-auto sm:mx-0">
@@ -300,19 +400,17 @@ function CharacterSetup() {
               appearance={appearance}
             />
           </div>
-          <p className="text-[10px] text-gray-600 italic text-center max-w-[140px]">
+          <p className="text-[10px] text-gray-600 italic text-center max-w-35">
             Color shifts with your archetype as you grow
           </p>
         </div>
 
         {/* Customisation + name */}
         <div className="flex-1 space-y-5">
-          {/* Appearance pickers */}
           <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-5">
             <h2 className="text-sm font-semibold text-white">
               Customise appearance
             </h2>
-
             <OptionRow
               label="Hair"
               options={HAIR_OPTIONS}
@@ -333,7 +431,6 @@ function CharacterSetup() {
             />
           </div>
 
-          {/* Name + submit */}
           <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-4">
             <h2 className="text-sm font-semibold text-white">
               Give them a name
@@ -378,127 +475,191 @@ export default function CharacterView() {
   const suggestions = getSuggestions(character);
   const stats = character.stats;
 
+  // Compute stat deltas vs last snapshot
+  const prevSnap =
+    character.statHistory.length >= 2
+      ? character.statHistory[character.statHistory.length - 2]
+      : null;
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
       {/* ── Hero banner ────────────────────────────────────────────────────── */}
       <div
-        className="rounded-2xl p-6 border flex flex-col sm:flex-row items-center sm:items-start gap-6 relative overflow-hidden"
+        className="rounded-2xl border relative overflow-hidden"
         style={{
-          borderColor: `${palette.glow}30`,
-          background: `radial-gradient(ellipse at top left, ${palette.glow}18, transparent 60%), #111827`,
+          borderColor: `${palette.glow}35`,
+          background: `radial-gradient(ellipse at top left, ${palette.glow}22, transparent 55%), radial-gradient(ellipse at bottom right, ${palette.glow}0d, transparent 50%), #0F1117`,
         }}
       >
-        {/* Sprite */}
-        <div className="shrink-0 flex flex-col items-center gap-2">
-          <PixelSprite
-            palette={palette}
-            scale={7}
-            animated
-            signals={character.signals}
-            appearance={character.appearance}
-          />
-          <button
-            onClick={refreshCharacterStats}
-            className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
-          >
-            ↻ sync
-          </button>
-        </div>
+        {/* Decorative corner glow */}
+        <div
+          className="absolute top-0 left-0 w-48 h-48 rounded-full pointer-events-none"
+          style={{
+            background: `radial-gradient(circle, ${palette.glow}15, transparent 70%)`,
+            transform: "translate(-30%, -30%)",
+          }}
+        />
 
-        {/* Identity */}
-        <div className="flex-1 min-w-0 text-center sm:text-left">
-          <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
-            <h1 className="text-2xl font-bold text-white">{character.name}</h1>
-            <span
-              className="text-xs font-semibold px-2 py-0.5 rounded-full"
+        <div className="relative flex flex-col sm:flex-row items-center sm:items-start gap-6 p-6">
+          {/* Sprite */}
+          <div className="shrink-0 flex flex-col items-center gap-3">
+            <div
+              className="rounded-2xl p-4 border"
               style={{
-                backgroundColor: `${palette.glow}22`,
-                color: palette.accent,
-                border: `1px solid ${palette.glow}44`,
+                borderColor: `${palette.glow}25`,
+                background: `radial-gradient(ellipse at center, ${palette.glow}18, transparent 70%), #111827`,
               }}
             >
-              Lv {character.level}
-            </span>
-          </div>
-          <p
-            className="text-sm font-medium mb-3"
-            style={{ color: palette.glow }}
-          >
-            {character.archetype}
-          </p>
-
-          {/* XP bar */}
-          <div className="mb-4 max-w-xs mx-auto sm:mx-0">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-gray-500">
-                Progress to Lv {character.level + 1}
-              </span>
-              <span className="text-[10px] text-gray-500">
-                {lvlProgress.current} / {lvlProgress.needed} xp
-              </span>
-            </div>
-            <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-700"
-                style={{
-                  width: `${lvlProgress.pct}%`,
-                  background: `linear-gradient(90deg, ${palette.glow}88, ${palette.glow})`,
-                }}
+              <PixelSprite
+                palette={palette}
+                scale={9}
+                animated
+                signals={character.signals}
+                appearance={character.appearance}
               />
             </div>
+            <button
+              onClick={refreshCharacterStats}
+              className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors flex items-center gap-1"
+            >
+              ↻ sync stats
+            </button>
           </div>
 
-          {/* Active signals */}
-          <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
-            {character.signals.map((signal) => {
-              const m = SIGNAL_META[signal];
-              return (
+          {/* Identity */}
+          <div className="flex-1 min-w-0 text-center sm:text-left">
+            {/* Name + level */}
+            <div className="flex items-center justify-center sm:justify-start gap-3 mb-1">
+              <h1 className="text-3xl font-bold text-white tracking-tight">
+                {character.name}
+              </h1>
+              <span
+                className="text-sm font-bold px-2.5 py-1 rounded-full"
+                style={{
+                  backgroundColor: `${palette.glow}22`,
+                  color: palette.glow,
+                  border: `1px solid ${palette.glow}44`,
+                }}
+              >
+                Lv {character.level}
+              </span>
+            </div>
+
+            {/* Archetype */}
+            <p
+              className="text-base font-semibold mb-4 tracking-wide uppercase"
+              style={{ color: `${palette.glow}cc` }}
+            >
+              {character.archetype}
+            </p>
+
+            {/* XP bar */}
+            <div className="mb-5 max-w-xs mx-auto sm:mx-0">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] text-gray-500 font-medium">
+                  Progress to Lv {character.level + 1}
+                </span>
+                <span className="text-[11px] text-gray-500 tabular-nums">
+                  {lvlProgress.current} / {lvlProgress.needed} xp
+                </span>
+              </div>
+              <div className="h-2 bg-gray-800 rounded-full overflow-hidden border border-gray-700/50">
                 <div
-                  key={signal}
-                  className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border"
+                  className="h-full rounded-full transition-all duration-700"
                   style={{
-                    color: m.color,
-                    borderColor: `${m.color}40`,
-                    backgroundColor: `${m.color}12`,
+                    width: `${lvlProgress.pct}%`,
+                    background: `linear-gradient(90deg, ${palette.glow}88, ${palette.glow})`,
+                    boxShadow: `0 0 8px ${palette.glow}55`,
                   }}
-                >
-                  <span>{m.icon}</span>
-                  <span className="font-medium">{m.label}</span>
-                </div>
-              );
-            })}
+                />
+              </div>
+            </div>
+
+            {/* Active signals */}
+            <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+              {character.signals.map((signal) => {
+                const m = SIGNAL_META[signal];
+                return (
+                  <div
+                    key={signal}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium"
+                    style={{
+                      color: m.color,
+                      borderColor: `${m.color}40`,
+                      backgroundColor: `${m.color}15`,
+                    }}
+                  >
+                    <span>{m.icon}</span>
+                    <span>{m.label}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ── Two-column layout ──────────────────────────────────────────────── */}
+      {/* ── Main grid ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
         {/* ── Stats ──────────────────────────────────────────────────────── */}
-        <section className="bg-gray-800 rounded-2xl p-5 border border-gray-700 space-y-4">
+        <section className="bg-gray-800/80 rounded-2xl p-5 border border-gray-700 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-white">Core Stats</h2>
             <span className="text-[10px] text-gray-500">
-              Derived from your calendar activity
+              from your calendar activity
             </span>
           </div>
-          {(Object.keys(stats) as (keyof CharacterStats)[]).map((key) => (
-            <StatBar
-              key={key}
-              statKey={key}
-              value={stats[key]}
-              history={character.statHistory}
-            />
-          ))}
-          <p className="text-[10px] text-gray-600 pt-2 border-t border-gray-700 leading-relaxed">
-            Stats reflect the last 30 days of activity, weighted toward recent
-            events. Recovery is always faster than drift.
-          </p>
+
+          {/* Radar chart */}
+          <div className="flex justify-center py-2">
+            <RadarChart stats={stats} palette={palette} />
+          </div>
+
+          {/* Stat bars */}
+          <div className="space-y-3 pt-2 border-t border-gray-700/60">
+            {(Object.keys(stats) as (keyof CharacterStats)[]).map((key) => (
+              <StatBar
+                key={key}
+                statKey={key}
+                value={stats[key]}
+                history={character.statHistory}
+              />
+            ))}
+          </div>
+
+          {prevSnap && (
+            <p className="text-[10px] text-gray-600 pt-2 border-t border-gray-700 leading-relaxed">
+              Compared to last session ·{" "}
+              {(() => {
+                const keys = Object.keys(stats) as (keyof CharacterStats)[];
+                const rising = keys.filter(
+                  (k) => stats[k] - prevSnap.stats[k] > 2,
+                );
+                const falling = keys.filter(
+                  (k) => stats[k] - prevSnap.stats[k] < -2,
+                );
+                if (rising.length === 0 && falling.length === 0)
+                  return "all stats stable";
+                const parts = [];
+                if (rising.length > 0)
+                  parts.push(
+                    `${rising.map((k) => STAT_META[k].label).join(", ")} ↑`,
+                  );
+                if (falling.length > 0)
+                  parts.push(
+                    `${falling.map((k) => STAT_META[k].label).join(", ")} ↓`,
+                  );
+                return parts.join(" · ");
+              })()}
+            </p>
+          )}
         </section>
 
         {/* ── Signals + Suggestions ──────────────────────────────────────── */}
         <div className="space-y-5">
           {/* Signals detail */}
-          <section className="bg-gray-800 rounded-2xl p-5 border border-gray-700">
+          <section className="bg-gray-800/80 rounded-2xl p-5 border border-gray-700">
             <h2 className="font-semibold text-white mb-4">
               What {character.name} is experiencing
             </h2>
@@ -529,10 +690,12 @@ export default function CharacterView() {
           </section>
 
           {/* Suggestions */}
-          <section className="bg-gray-800 rounded-2xl p-5 border border-gray-700">
-            <h2 className="font-semibold text-white mb-1">Reflections</h2>
+          <section className="bg-gray-800/80 rounded-2xl p-5 border border-gray-700">
+            <h2 className="font-semibold text-white mb-1">
+              Character Insights
+            </h2>
             <p className="text-[10px] text-gray-500 mb-4">
-              Light observations — not prescriptions
+              Observations from {character.name}&apos;s journey
             </p>
             <div className="space-y-3">
               {suggestions.map((s, i) => (
@@ -550,7 +713,7 @@ export default function CharacterView() {
       </div>
 
       {/* ── Trend graph ────────────────────────────────────────────────────── */}
-      <section className="bg-gray-800 rounded-2xl p-5 border border-gray-700">
+      <section className="bg-gray-800/80 rounded-2xl p-5 border border-gray-700">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-white">Stat Trends</h2>
           <span className="text-[10px] text-gray-500">
@@ -560,17 +723,17 @@ export default function CharacterView() {
         <TrendGraph history={character.statHistory} />
       </section>
 
-      {/* ── Tradeoff note ──────────────────────────────────────────────────── */}
+      {/* ── About ──────────────────────────────────────────────────────────── */}
       <div className="rounded-2xl p-5 border border-gray-700/50 bg-gray-800/40">
         <h2 className="font-semibold text-gray-300 mb-2 text-sm">
-          About this system
+          How this works
         </h2>
         <p className="text-xs text-gray-500 leading-relaxed">
-          Every choice of where to spend time and energy is a tradeoff, not a
-          mistake. {character.name}&apos;s stats reflect natural patterns in
-          your activity — they drift gently when an area is quiet, and recover
-          quickly when attention returns. There are no failure states here, only
-          different kinds of seasons.
+          {character.name}&apos;s stats are derived from the last 30 days of your
+          calendar activity — weighted toward what&apos;s recent. Stats drift gently
+          when an area goes quiet and recover quickly when attention returns.
+          Every choice of where to spend time is a tradeoff, not a mistake.
+          There are no failure states here, only different kinds of seasons.
         </p>
       </div>
     </div>

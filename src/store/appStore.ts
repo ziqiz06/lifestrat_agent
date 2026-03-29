@@ -428,6 +428,7 @@ Format your response as:
             t.id === taskId ? { ...t, confirmed: true } : t,
           ),
         }));
+        get().refreshCharacterStats();
       },
 
       deleteCalendarTask: (taskId) => {
@@ -459,6 +460,7 @@ Format your response as:
           calendarTasks: newTasks,
           conflicts: detectConflicts(newTasks, get().profile),
         });
+        get().refreshCharacterStats();
       },
 
       resolveConflict: (conflictId, keepTaskId) => {
