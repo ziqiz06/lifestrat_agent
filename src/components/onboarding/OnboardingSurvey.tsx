@@ -1,26 +1,31 @@
 "use client";
 import { useState } from "react";
-import { UserProfile } from "@/types";
+import { UserProfile, ScheduleBlock, ScheduleBlockRecurrence } from "@/types";
 
 interface Props {
   onComplete: (profile: UserProfile) => void;
 }
 
-const DAYS = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
+const RECURRENCE_LABELS: Record<ScheduleBlockRecurrence, string> = {
+  none: "One-time",
+  daily: "Daily",
+  weekly: "Weekly",
+  weekdays: "Weekdays",
+  weekends: "Weekends",
+};
 
 export default function OnboardingSurvey({ onComplete }: Props) {
   const [step, setStep] = useState(0);
   const [breakfastEnabled, setBreakfastEnabled] = useState(true);
   const [lunchEnabled, setLunchEnabled] = useState(true);
   const [dinnerEnabled, setDinnerEnabled] = useState(true);
+
+  // Schedule block form state (for Step 4)
+  const [blockName, setBlockName] = useState("");
+  const [blockStart, setBlockStart] = useState("09:00");
+  const [blockEnd, setBlockEnd] = useState("10:00");
+  const [blockDate, setBlockDate] = useState("");
+  const [blockRecurrence, setBlockRecurrence] = useState<ScheduleBlockRecurrence>("weekly");
 
   const [form, setForm] = useState<Partial<UserProfile>>({
     activelyLooking: true,
@@ -45,12 +50,27 @@ export default function OnboardingSurvey({ onComplete }: Props) {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const toggleDay = (day: string) => {
-    const days = form.doNotScheduleDays ?? [];
-    update(
-      "doNotScheduleDays",
-      days.includes(day) ? days.filter((d) => d !== day) : [...days, day],
-    );
+  const addScheduleBlock = () => {
+    if (!blockName.trim() || !blockStart || !blockEnd) return;
+    if ((blockRecurrence === 'none' || blockRecurrence === 'weekly') && !blockDate) return;
+    const newBlock: ScheduleBlock = {
+      id: crypto.randomUUID(),
+      name: blockName.trim(),
+      startTime: blockStart,
+      endTime: blockEnd,
+      date: blockDate || undefined,
+      recurrence: blockRecurrence,
+    };
+    update("scheduleBlocks", [...(form.scheduleBlocks ?? []), newBlock]);
+    setBlockName("");
+    setBlockStart("09:00");
+    setBlockEnd("10:00");
+    setBlockDate("");
+    setBlockRecurrence("weekly");
+  };
+
+  const removeScheduleBlock = (id: string) => {
+    update("scheduleBlocks", (form.scheduleBlocks ?? []).filter((b) => b.id !== id));
   };
 
   const steps = [
@@ -316,29 +336,82 @@ export default function OnboardingSurvey({ onComplete }: Props) {
             </div>
           </div>
 
-          {/* Do-not-schedule days */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Days you do <span className="text-red-400">not</span> want work-like tasks scheduled
-            </label>
-            <p className="text-xs text-gray-500 mb-2">
-              No career tasks, applications, or study blocks will be placed on these days.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {DAYS.map((day) => (
-                <button
-                  key={day}
-                  onClick={() => toggleDay(day)}
-                  className={`py-1.5 px-3 rounded-full border text-xs font-medium transition-colors ${
-                    (form.doNotScheduleDays ?? []).includes(day)
-                      ? "bg-red-600/80 border-red-500 text-white"
-                      : "bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500"
-                  }`}
-                >
-                  {(form.doNotScheduleDays ?? []).includes(day) ? "✕ " : ""}
-                  {day}
-                </button>
-              ))}
+          {/* Blocked time blocks */}
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">
+                Blocked Time
+              </label>
+              <p className="text-xs text-gray-500">
+                Add recurring commitments or times you&apos;re unavailable. The scheduler will skip these.
+              </p>
+            </div>
+
+            {/* Existing blocks */}
+            {(form.scheduleBlocks ?? []).length > 0 && (
+              <div className="space-y-2">
+                {(form.scheduleBlocks ?? []).map((b) => (
+                  <div key={b.id} className="flex items-center justify-between bg-gray-700/60 px-3 py-2 border border-gray-600/50 rounded-lg">
+                    <div className="min-w-0">
+                      <p className="text-sm text-white font-medium">{b.name}</p>
+                      <p className="text-xs text-gray-400">
+                        {b.startTime}–{b.endTime} · {RECURRENCE_LABELS[b.recurrence]}
+                        {b.date ? ` · ${b.date}` : ""}
+                      </p>
+                    </div>
+                    <button onClick={() => removeScheduleBlock(b.id)} className="text-gray-500 hover:text-red-400 transition-colors ml-3 shrink-0 text-sm">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add block form */}
+            <div className="border border-gray-600 rounded-xl p-3 space-y-2.5 bg-gray-700/30">
+              <input
+                value={blockName}
+                onChange={(e) => setBlockName(e.target.value)}
+                placeholder="Event name (e.g. Gym, No work, Class)"
+                className="w-full bg-gray-700 text-white text-sm px-3 py-2 border border-gray-600 rounded-lg focus:border-indigo-500 focus:outline-none placeholder-gray-500"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Start time</p>
+                  <input type="time" value={blockStart} onChange={(e) => setBlockStart(e.target.value)}
+                    className="w-full bg-gray-700 text-white text-sm px-3 py-2 border border-gray-600 rounded-lg focus:border-indigo-500 focus:outline-none" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">End time</p>
+                  <input type="time" value={blockEnd} onChange={(e) => setBlockEnd(e.target.value)}
+                    className="w-full bg-gray-700 text-white text-sm px-3 py-2 border border-gray-600 rounded-lg focus:border-indigo-500 focus:outline-none" />
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Repeats</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(Object.keys(RECURRENCE_LABELS) as ScheduleBlockRecurrence[]).map((r) => (
+                    <button key={r} onClick={() => setBlockRecurrence(r)}
+                      className={`px-3 py-1 text-xs border rounded-full transition-colors ${blockRecurrence === r ? "bg-indigo-600 border-indigo-500 text-white" : "bg-gray-700 border-gray-600 text-gray-300 hover:border-gray-500"}`}>
+                      {RECURRENCE_LABELS[r]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {(blockRecurrence === 'none' || blockRecurrence === 'weekly') && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">
+                    {blockRecurrence === 'none' ? 'Date' : 'Starting date (sets day of week)'}
+                  </p>
+                  <input type="date" value={blockDate} onChange={(e) => setBlockDate(e.target.value)}
+                    className="w-full bg-gray-700 text-white text-sm px-3 py-2 border border-gray-600 rounded-lg focus:border-indigo-500 focus:outline-none" />
+                </div>
+              )}
+              <button
+                onClick={addScheduleBlock}
+                disabled={!blockName.trim() || !blockStart || !blockEnd || ((blockRecurrence === 'none' || blockRecurrence === 'weekly') && !blockDate)}
+                className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                + Add Block
+              </button>
             </div>
           </div>
         </div>
