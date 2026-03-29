@@ -120,6 +120,8 @@ function CharacterMiniCard() {
             scale={3}
             animated
             signals={character.signals}
+            appearance={character.appearance}
+            level={character.level}
           />
         </div>
 

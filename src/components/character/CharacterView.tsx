@@ -7,6 +7,7 @@ import {
   SIGNAL_META,
   getSuggestions,
   getLevelProgress,
+  getOutfitTier,
   DEFAULT_APPEARANCE,
   HAIR_OPTIONS,
   EYE_OPTIONS,
@@ -464,9 +465,24 @@ function CharacterSetup() {
   );
 }
 
+const OUTFIT_TIER_LABELS: Record<string, string> = {
+  basic: "Apprentice",
+  skilled: "Skilled",
+  advanced: "Advanced",
+  elite: "Elite",
+};
+
+const OUTFIT_TIER_UNLOCK: Record<string, string> = {
+  basic: "Levels 1–2",
+  skilled: "Unlocked at Lv 3",
+  advanced: "Unlocked at Lv 5",
+  elite: "Unlocked at Lv 7",
+};
+
 // ── Main CharacterView ────────────────────────────────────────────────────────
 export default function CharacterView() {
-  const { character, refreshCharacterStats } = useAppStore();
+  const { character, refreshCharacterStats, updateCharacterAppearance } = useAppStore();
+  const [editingAppearance, setEditingAppearance] = useState(false);
 
   if (!character) return <CharacterSetup />;
 
@@ -516,6 +532,7 @@ export default function CharacterView() {
                 animated
                 signals={character.signals}
                 appearance={character.appearance}
+                level={character.level}
               />
             </div>
             <button
@@ -721,6 +738,122 @@ export default function CharacterView() {
           </span>
         </div>
         <TrendGraph history={character.statHistory} />
+      </section>
+
+      {/* ── Appearance editor ──────────────────────────────────────────────── */}
+      <section className="bg-gray-800/80 rounded-2xl p-5 border border-gray-700">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-semibold text-white">Appearance</h2>
+          <button
+            onClick={() => setEditingAppearance((v) => !v)}
+            className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            {editingAppearance ? "Done" : "Edit ✏️"}
+          </button>
+        </div>
+        <p className="text-[10px] text-gray-500 mb-4">
+          Shape is yours to customise — colors &amp; outfit upgrade automatically
+          as you level up
+        </p>
+
+        {/* Outfit tier progression */}
+        <div className="flex gap-2 flex-wrap mb-4">
+          {(["basic", "skilled", "advanced", "elite"] as const).map((tier) => {
+            const current = getOutfitTier(character.level);
+            const tiers = ["basic", "skilled", "advanced", "elite"];
+            const unlocked = tiers.indexOf(tier) <= tiers.indexOf(current);
+            return (
+              <div
+                key={tier}
+                className={`flex-1 min-w-[80px] rounded-xl px-3 py-2 border text-center transition-all ${
+                  tier === current
+                    ? "border-indigo-500/60 bg-indigo-600/15"
+                    : unlocked
+                      ? "border-gray-600 bg-gray-700/40"
+                      : "border-gray-700/40 bg-gray-800/30 opacity-40"
+                }`}
+              >
+                <p
+                  className="text-[10px] font-semibold mb-0.5"
+                  style={{ color: tier === current ? palette.glow : "#9CA3AF" }}
+                >
+                  {OUTFIT_TIER_LABELS[tier]}
+                  {tier === current && " ✦"}
+                </p>
+                <p className="text-[9px] text-gray-600">
+                  {OUTFIT_TIER_UNLOCK[tier]}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+
+        {editingAppearance && (
+          <div className="flex flex-col sm:flex-row gap-6 items-start pt-3 border-t border-gray-700/60">
+            {/* Live preview */}
+            <div className="shrink-0 flex flex-col items-center gap-2 mx-auto sm:mx-0">
+              <div
+                className="rounded-2xl p-4 border"
+                style={{
+                  borderColor: `${palette.glow}25`,
+                  background: `radial-gradient(ellipse at center, ${palette.glow}15, transparent 70%), #111827`,
+                }}
+              >
+                <PixelSprite
+                  palette={palette}
+                  scale={7}
+                  animated
+                  signals={character.signals}
+                  appearance={character.appearance}
+                  level={character.level}
+                />
+              </div>
+              <span
+                className="text-[10px] font-medium"
+                style={{ color: palette.glow }}
+              >
+                {OUTFIT_TIER_LABELS[getOutfitTier(character.level)]} tier
+              </span>
+            </div>
+
+            {/* Pickers */}
+            <div className="flex-1 space-y-4">
+              <OptionRow
+                label="Hair"
+                options={HAIR_OPTIONS}
+                value={character.appearance?.hairStyle ?? DEFAULT_APPEARANCE.hairStyle}
+                onChange={(v) =>
+                  updateCharacterAppearance({
+                    ...(character.appearance ?? DEFAULT_APPEARANCE),
+                    hairStyle: v,
+                  })
+                }
+              />
+              <OptionRow
+                label="Eyes"
+                options={EYE_OPTIONS}
+                value={character.appearance?.eyeStyle ?? DEFAULT_APPEARANCE.eyeStyle}
+                onChange={(v) =>
+                  updateCharacterAppearance({
+                    ...(character.appearance ?? DEFAULT_APPEARANCE),
+                    eyeStyle: v,
+                  })
+                }
+              />
+              <OptionRow
+                label="Face shape"
+                options={FACE_OPTIONS}
+                value={character.appearance?.faceShape ?? DEFAULT_APPEARANCE.faceShape}
+                onChange={(v) =>
+                  updateCharacterAppearance({
+                    ...(character.appearance ?? DEFAULT_APPEARANCE),
+                    faceShape: v,
+                  })
+                }
+              />
+            </div>
+          </div>
+        )}
       </section>
 
       {/* ── About ──────────────────────────────────────────────────────────── */}

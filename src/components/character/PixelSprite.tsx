@@ -2,31 +2,22 @@
 import {
   buildSprite,
   DEFAULT_APPEARANCE,
-  getArchetypePalette,
 } from "@/lib/characterEngine";
 import type { ArchetypePalette } from "@/lib/characterEngine";
 import type { CharacterAppearance, StateSignal } from "@/types";
 
 function getColor(pixel: string, palette: ArchetypePalette): string | null {
   switch (pixel) {
-    case "H":
-      return palette.hair;
-    case "k":
-      return "#0F0F23";
-    case "S":
-      return "#F5C6A0";
-    case "W":
-      return "#FFFFFF";
-    case "E":
-      return palette.eye;
-    case "C":
-      return palette.shirt;
-    case "P":
-      return "#1E293B";
-    case "B":
-      return "#374151";
-    default:
-      return null;
+    case "H": return palette.hair;
+    case "k": return "#0F0F23";
+    case "S": return "#F5C6A0";
+    case "W": return "#FFFFFF";
+    case "E": return palette.eye;
+    case "C": return palette.shirt;
+    case "P": return "#1E293B";
+    case "B": return "#374151";
+    case "A": return palette.eye; // accent trim — bright archetype color
+    default:  return null;
   }
 }
 
@@ -36,6 +27,7 @@ interface Props {
   animated?: boolean;
   signals?: StateSignal[];
   appearance?: CharacterAppearance;
+  level?: number;
 }
 
 export default function PixelSprite({
@@ -44,10 +36,11 @@ export default function PixelSprite({
   animated = true,
   signals = [],
   appearance = DEFAULT_APPEARANCE,
+  level = 1,
 }: Props) {
   const W = 16 * scale;
   const H = 20 * scale;
-  const sprite = buildSprite(appearance);
+  const sprite = buildSprite(appearance, level);
 
   const isSurging = signals.includes("surging");
   const isDrifting = signals.includes("drifting");
@@ -60,18 +53,18 @@ export default function PixelSprite({
       ? "#F59E0B"
       : palette.glow;
 
+  // Glow radius intensifies at higher levels
+  const glowRadius = level >= 7 ? 10 : level >= 5 ? 7 : level >= 3 ? 5 : 4;
+  const glowAlpha = level >= 7 ? "bb" : level >= 5 ? "88" : "55";
+
   return (
     <div
       style={{
         width: W,
         height: H,
         imageRendering: "pixelated",
-        filter: `drop-shadow(${
-          isStretched
-            ? "0 0 6px #F9731688"
-            : isSurging
-              ? "0 0 8px #F59E0B88"
-              : `0 0 4px ${palette.glow}44`
+        filter: `drop-shadow(0 0 ${isStretched ? 6 : isSurging ? 8 : glowRadius}px ${
+          isStretched ? "#F9731688" : isSurging ? "#F59E0B88" : `${glowColor}${glowAlpha}`
         })`,
         animation: animated
           ? `idle-bob ${animDuration} ease-in-out infinite`

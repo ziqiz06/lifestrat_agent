@@ -76,18 +76,71 @@ const FACE_ROWS: Record<FaceShape, FaceRows> = {
   },
 };
 
-const BODY_ROWS: string[] = [
-  "..kCCCCCCCCCCk..", // 10 collar
-  ".kCCCCCCCCCCCCk.", // 11 shirt
-  ".kCCCCCCCCCCCCk.", // 12 shirt
-  ".kCCCCCCCCCCCCk.", // 13 shirt lower
-  "kCk.kPPPPPPk.kCk", // 14 arms + legs
-  "kCk.kPPPPPPk.kCk", // 15 arms + legs
-  ".k..kPPPPPPk..k.", // 16 lower legs
-  "....kBBBBBBk....", // 17 boots
-  "....kBBBBBBk....", // 18 boots
-  "....kkkkkkkk....", // 19 boot soles
-];
+// ── Outfit tiers (unlocked by level) ─────────────────────────────────────────
+// Pixel codes: C=shirt  P=pants  B=boot  A=accent trim (uses palette.eye)
+export type OutfitTier = "basic" | "skilled" | "advanced" | "elite";
+
+export function getOutfitTier(level: number): OutfitTier {
+  if (level >= 7) return "elite";
+  if (level >= 5) return "advanced";
+  if (level >= 3) return "skilled";
+  return "basic";
+}
+
+const OUTFIT_ROWS: Record<OutfitTier, string[]> = {
+  // Level 1-2: plain shirt + plain pants
+  basic: [
+    "..kCCCCCCCCCCk..",
+    ".kCCCCCCCCCCCCk.",
+    ".kCCCCCCCCCCCCk.",
+    ".kCCCCCCCCCCCCk.",
+    "kCk.kPPPPPPk.kCk",
+    "kCk.kPPPPPPk.kCk",
+    ".k..kPPPPPPk..k.",
+    "....kBBBBBBk....",
+    "....kBBBBBBk....",
+    "....kkkkkkkk....",
+  ],
+  // Level 3-4: dark belt stripe + boot buckles
+  skilled: [
+    "..kCCCCCCCCCCk..",
+    ".kCCCCCCCCCCCCk.",
+    ".kCCCCCCCCCCCCk.",
+    ".kkkkkkkkkkkkkk.",
+    "kCk.kPPPPPPk.kCk",
+    "kCk.kPPPPPPk.kCk",
+    ".k..kPPPPPPk..k.",
+    "....kBBBBBBk....",
+    "....kBkBBkBk....",
+    "....kkkkkkkk....",
+  ],
+  // Level 5-6: shoulder epaulettes + belt + knee marks
+  advanced: [
+    "kCkCCCCCCCCCCkCk",
+    ".kCCCCCCCCCCCCk.",
+    ".kCCCCCCCCCCCCk.",
+    ".kkkkkkkkkkkkkk.",
+    "kCk.kPPPPPPk.kCk",
+    "kCk.kPkPPkPk.kCk",
+    ".k..kPPPPPPk..k.",
+    "....kBBBBBBk....",
+    "....kBkBBkBk....",
+    "....kkkkkkkk....",
+  ],
+  // Level 7+: elite coat with accent trim on both sides
+  elite: [
+    "kCkCCCCCCCCCCkCk",
+    ".kACCCCCCCCCCAk.",
+    ".kACCCCCCCCCCAk.",
+    ".kkkkkkkkkkkkkk.",
+    "kCk.kPPPPPPk.kCk",
+    "kCk.kPkPPkPk.kCk",
+    ".k..kPPPPPPk..k.",
+    "....kBBBBBBk....",
+    "....kBkBBkBk....",
+    "....kkkkkkkk....",
+  ],
+};
 
 export const DEFAULT_APPEARANCE: CharacterAppearance = {
   hairStyle: "medium",
@@ -95,22 +148,24 @@ export const DEFAULT_APPEARANCE: CharacterAppearance = {
   faceShape: "round",
 };
 
-/** Assemble a full 16×20 sprite from the chosen appearance parts. */
+/** Assemble a full 16×20 sprite from the chosen appearance parts and level. */
 export function buildSprite(
   appearance: CharacterAppearance = DEFAULT_APPEARANCE,
+  level: number = 1,
 ): string[] {
   const hair = HAIR_ROWS[appearance.hairStyle] ?? HAIR_ROWS.medium;
   const eyes = EYE_ROWS[appearance.eyeStyle] ?? EYE_ROWS.default;
   const face = FACE_ROWS[appearance.faceShape] ?? FACE_ROWS.round;
+  const body = OUTFIT_ROWS[getOutfitTier(level)];
   return [
-    ...hair, // rows 0-3
+    ...hair,       // rows 0-3
     face.forehead, // row 4
-    eyes[0], // row 5
-    eyes[1], // row 6
-    face.mid, // row 7
-    face.mouth, // row 8
-    face.chin, // row 9
-    ...BODY_ROWS, // rows 10-19
+    eyes[0],       // row 5
+    eyes[1],       // row 6
+    face.mid,      // row 7
+    face.mouth,    // row 8
+    face.chin,     // row 9
+    ...body,       // rows 10-19
   ];
 }
 

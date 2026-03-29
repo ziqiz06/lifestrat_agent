@@ -105,6 +105,7 @@ interface AppStore extends AppState {
   resetStore: () => void;
   createCharacter: (name: string, appearance?: CharacterAppearance) => void;
   refreshCharacterStats: () => void;
+  updateCharacterAppearance: (appearance: CharacterAppearance) => void;
   addGoal: (text: string) => void;
   updateCalendarTask: (taskId: string, updates: Partial<Pick<import('@/types').CalendarTask, 'title' | 'startTime' | 'endTime'>>) => void;
   sendChatMessage: (content: string) => Promise<void>;
@@ -161,6 +162,12 @@ export const useAppStore = create<AppStore>()(
           addedToPlan: false,
         };
         set((state) => ({ goals: [...state.goals, newGoal] }));
+      },
+
+      updateCharacterAppearance: (appearance) => {
+        const char = get().character;
+        if (!char) return;
+        set({ character: { ...char, appearance } });
       },
 
       refreshCharacterStats: () => {
