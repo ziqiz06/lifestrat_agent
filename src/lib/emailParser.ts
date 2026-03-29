@@ -1,4 +1,5 @@
 import { MockEmail, Opportunity, EmailCategory } from '@/types';
+import { parseEventTimes } from './timeParser';
 
 const ESTIMATED_HOURS: Record<EmailCategory, number> = {
   internship_application: 4,
@@ -7,7 +8,7 @@ const ESTIMATED_HOURS: Record<EmailCategory, number> = {
   networking: 2,
   classes: 5,
   deadline: 3,
-  entertainment: 1,
+  entertainment: 2,
   personal: 0.5,
   ignore: 0,
 };
@@ -23,6 +24,15 @@ const PRIORITY_REASONS: Record<EmailCategory, string> = {
   personal: 'Personal message.',
   ignore: 'Low priority.',
 };
+
+// Categories where the email describes a real-time event that should be placed
+// at its actual time on the calendar, not in a flexible work slot.
+const FIXED_TIME_CATEGORIES = new Set<EmailCategory>([
+  'networking',
+  'professional_event',
+  'classes',
+  'entertainment',
+]);
 
 // Parses a date like "April 15", "March 30th", "April 2" from free text
 function parseDeadline(text: string): string | null {
@@ -46,6 +56,10 @@ function parseDeadline(text: string): string | null {
 /**
  * Derives an Opportunity for every non-ignored email.
  * Deduplicates by email id so duplicate entries in the email list are safe.
+ *
+ * For fixed-time categories (networking, professional_event, classes, entertainment),
+ * also extracts the actual event start/end time from the subject + body so the
+ * calendar planner can anchor the task at its real time.
  */
 export function deriveOpportunitiesFromEmails(emails: MockEmail[]): Opportunity[] {
   const seen = new Set<string>();
@@ -61,6 +75,15 @@ export function deriveOpportunitiesFromEmails(emails: MockEmail[]): Opportunity[
       const searchText = `${email.subject} ${email.body}`;
       const deadline = parseDeadline(searchText);
 
+      // Parse actual event time for fixed-time categories
+      let eventTime: string | undefined;
+      let eventEndTime: string | undefined;
+      if (FIXED_TIME_CATEGORIES.has(email.category)) {
+        const parsed = parseEventTimes(searchText);
+        eventTime = parsed.startTime;
+        eventEndTime = parsed.endTime;
+      }
+
       return {
         id: `opp-${email.id}`,
         title: email.subject,
@@ -75,6 +98,8 @@ export function deriveOpportunitiesFromEmails(emails: MockEmail[]): Opportunity[
         emailId: email.id,
         interested: null,
         addedToCalendar: false,
+        eventTime,
+        eventEndTime,
       };
     });
 }

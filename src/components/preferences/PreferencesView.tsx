@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useAppStore } from "@/store/appStore";
 import { UserProfile } from "@/types";
-import { saveProfile } from "@/lib/supabaseSync";
+import { saveProfile, clearCalendarAndDecisions } from "@/lib/supabaseSync";
 
 const DAYS = [
   "Monday",
@@ -19,9 +19,10 @@ interface PreferencesProps {
 }
 
 export default function PreferencesView({ userId }: PreferencesProps) {
-  const { profile, updateProfile } = useAppStore();
+  const { profile, updateProfile, resetStore } = useAppStore();
   const [form, setForm] = useState<UserProfile>({ ...profile });
   const [saved, setSaved] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const update = (key: keyof UserProfile, value: unknown) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -43,6 +44,16 @@ export default function PreferencesView({ userId }: PreferencesProps) {
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleReset = async () => {
+    setResetting(true);
+    resetStore();
+    localStorage.removeItem('lifestrat-app-state');
+    if (userId) {
+      await clearCalendarAndDecisions(userId);
+    }
+    setResetting(false);
   };
 
   return (
@@ -217,6 +228,21 @@ export default function PreferencesView({ userId }: PreferencesProps) {
             ))}
           </div>
         </div>
+      </section>
+
+      {/* Reset */}
+      <section className="bg-gray-800 rounded-2xl p-5 border border-red-900/40 space-y-3">
+        <h2 className="font-semibold text-white">Reset Data</h2>
+        <p className="text-sm text-gray-400">
+          Clears your calendar and opportunity decisions back to defaults. Your profile settings are kept.
+        </p>
+        <button
+          onClick={handleReset}
+          disabled={resetting}
+          className="px-4 py-2 rounded-lg text-sm font-medium bg-red-900/40 hover:bg-red-800/60 text-red-300 border border-red-800/50 transition-colors disabled:opacity-50"
+        >
+          {resetting ? "Resetting…" : "Reset Calendar & Decisions"}
+        </button>
       </section>
 
       {/* Blocked time */}

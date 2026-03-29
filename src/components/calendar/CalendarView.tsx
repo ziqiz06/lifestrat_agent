@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useAppStore } from "@/store/appStore";
 import { CalendarTask, Conflict, TaskType } from "@/types";
+import { detectOverflow } from "@/lib/dayPlanner";
 
 // ── Grid constants ─────────────────────────────────────────────────────────────
 const HOUR_HEIGHT = 64;
@@ -151,24 +152,30 @@ function TaskBlock({
   laid,
   isConflict,
   onClick,
+  onExtend,
 }: {
   laid: LaidTask;
   isConflict: boolean;
   onClick: (rect: DOMRect) => void;
+  onExtend?: (extraMinutes: number) => void;
 }) {
   const { task, lane, laneCount } = laid;
+  const [hovered, setHovered] = useState(false);
   const top = topPx(task.startTime);
   const height = heightPx(task.startTime, task.endTime);
   const widthPct = 100 / laneCount;
   const leftPct = (lane / laneCount) * 100;
   const confirmed = task.confirmed !== false;
   const isTall = height >= 48;
+  const isFlexible = task.flex === "flexible";
 
   const borderColor = isConflict ? "#ef4444" : task.color;
   const bg = `${task.color}${confirmed ? "20" : "12"}`;
 
   return (
     <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       onClick={(e) => {
         e.stopPropagation();
         onClick((e.currentTarget as HTMLDivElement).getBoundingClientRect());
@@ -190,7 +197,7 @@ function TaskBlock({
         cursor: "pointer",
         transition: "filter 0.12s, box-shadow 0.12s",
       }}
-      className="hover:brightness-125 hover:shadow-lg"
+      className={hovered ? "brightness-125 shadow-lg" : ""}
     >
       <div className="px-1.5 py-1 h-full flex flex-col gap-0.5 overflow-hidden">
         <div className="flex items-center gap-1 min-w-0">
@@ -203,6 +210,11 @@ function TaskBlock({
               title="Unconfirmed"
             >
               ◌
+            </span>
+          )}
+          {isFlexible && (
+            <span className="text-[9px] px-1 rounded bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 shrink-0 leading-tight">
+              flex
             </span>
           )}
           {isTall && (
@@ -225,6 +237,25 @@ function TaskBlock({
         >
           {task.title}
         </p>
+        {/* Extend buttons — only for flexible tasks, only when hovered and tall enough */}
+        {isFlexible && onExtend && hovered && height >= 40 && (
+          <div className="flex gap-1 mt-auto pt-0.5" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={(e) => { e.stopPropagation(); onExtend(30); }}
+              className="text-[9px] px-1 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white/70 transition-colors leading-none"
+              title="Extend by 30 minutes"
+            >
+              +30m
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onExtend(60); }}
+              className="text-[9px] px-1 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white/70 transition-colors leading-none"
+              title="Extend by 1 hour"
+            >
+              +1h
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -640,10 +671,12 @@ export default function CalendarView() {
   const {
     calendarTasks,
     conflicts,
+    profile,
     resolveConflict,
     confirmCalendarTask,
     deleteCalendarTask,
     addCustomCalendarTask,
+    extendTask,
   } = useAppStore();
 
   const [weekOffset, setWeekOffset] = useState(0);
@@ -897,6 +930,7 @@ export default function CalendarView() {
                       laid={l}
                       isConflict={conflictTaskIds.has(l.task.id)}
                       onClick={(rect) => handleTaskClick(l.task, rect)}
+                      onExtend={l.task.flex === "flexible" ? (mins) => extendTask(l.task.id, mins) : undefined}
                     />
                   ))}
                 </div>
@@ -940,6 +974,36 @@ export default function CalendarView() {
           </div>
         ))}
       </div>
+
+      {/* ── Overflow / Deferred Tasks ────────────────────────────────────────── */}
+      {(() => {
+        const overflowTasks = weekDates.flatMap((date) => {
+          const { overflow } = detectOverflow(calendarTasks, date, profile);
+          return overflow.map((t) => ({ ...t, date }));
+        });
+        if (overflowTasks.length === 0) return null;
+        return (
+          <div className="bg-gray-800/60 border border-yellow-700/40 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-yellow-400 text-sm">⚠</span>
+              <h2 className="text-sm font-semibold text-yellow-300">Deferred — Day Overloaded</h2>
+              <span className="text-xs text-gray-500 ml-auto">{overflowTasks.length} task{overflowTasks.length !== 1 ? "s" : ""} didn&apos;t fit</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {overflowTasks.map((t) => (
+                <div key={t.id} className="flex items-center gap-3 bg-gray-900/60 rounded-xl px-3 py-2 border border-gray-700/50">
+                  <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-white truncate">{t.title}</p>
+                    <p className="text-[10px] text-gray-500">{t.date} · {t.startTime}–{t.endTime}</p>
+                  </div>
+                  <span className="text-[10px] text-yellow-600 border border-yellow-700/40 rounded px-1.5 py-0.5 shrink-0">overflow</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Task Popover ──────────────────────────────────────────────────────── */}
       {selectedTask && (

@@ -52,6 +52,10 @@ export interface Opportunity {
   emailId: string;
   interested: boolean | null; // null = undecided, true = yes, false = no
   addedToCalendar: boolean;
+  /** Parsed real event start time (HH:MM). Present for fixed-time events like networking nights, career fairs, workshops. */
+  eventTime?: string;
+  /** Parsed real event end time (HH:MM). Present when the email specifies a range like "10am–3pm". */
+  eventEndTime?: string;
 }
 
 export type TaskType =
@@ -67,10 +71,25 @@ export type TaskType =
   | "deadline"
   | "other";
 
+export type TaskFlex = 'fixed' | 'flexible';
+
+export interface TimeBlock {
+  startTime: string; // "HH:MM"
+  endTime: string;   // "HH:MM"
+  durationMinutes: number;
+}
+
+export interface ScheduleResult {
+  scheduled: CalendarTask[];
+  deferred: CalendarTask[];
+  overflow: boolean;
+}
+
 export interface CalendarTask {
   id: string;
   title: string;
   type: TaskType;
+  flex?: TaskFlex;
   startTime: string; // "HH:MM"
   endTime: string; // "HH:MM"
   date: string; // "YYYY-MM-DD"

@@ -68,27 +68,33 @@ export async function loadOpportunityDecisions(
 export async function saveCalendarTasks(userId: string, tasks: CalendarTask[], allMockIds: string[]) {
   const supabase = createClient();
   const currentIds = new Set(tasks.map((t) => t.id));
-  // Tasks the user added (not in original mock set)
   const userTasks = tasks.filter((t) => !allMockIds.includes(t.id));
-  // Mock tasks that were removed (resolved conflicts etc)
   const removedMockIds = allMockIds.filter((id) => !currentIds.has(id));
 
+  console.log('[saveCalendarTasks] userTasks:', userTasks.map(t => t.id));
+  console.log('[saveCalendarTasks] removedMockIds:', removedMockIds);
+
   await supabase.from('calendar_tasks').delete().eq('user_id', userId);
-  await supabase.from('calendar_tasks').insert([
-    // Store user-added tasks as type 'added'
+
+  const rows = [
     ...userTasks.map((t) => ({ user_id: userId, task: t, entry_type: 'added' })),
-    // Store removed mock IDs as type 'removed'
     ...removedMockIds.map((id) => ({ user_id: userId, task: { id } as CalendarTask, entry_type: 'removed' })),
-  ]);
+  ];
+  if (rows.length > 0) {
+    const { error } = await supabase.from('calendar_tasks').insert(rows);
+    if (error) console.error('[saveCalendarTasks] insert error:', error);
+  }
 }
 
 // Load calendar state
 export async function loadCalendarTasks(userId: string): Promise<{ added: CalendarTask[]; removedIds: string[] }> {
   const supabase = createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('calendar_tasks')
     .select('task, entry_type')
     .eq('user_id', userId);
+
+  console.log('[loadCalendarTasks] rows:', data, 'error:', error);
 
   const added: CalendarTask[] = [];
   const removedIds: string[] = [];
@@ -99,7 +105,17 @@ export async function loadCalendarTasks(userId: string): Promise<{ added: Calend
       added.push(row.task as CalendarTask);
     }
   }
+  console.log('[loadCalendarTasks] added:', added.map(t => t.id), 'removedIds:', removedIds);
   return { added, removedIds };
+}
+
+// Clear calendar decisions and opportunity decisions (keeps profile/goals)
+export async function clearCalendarAndDecisions(userId: string) {
+  const supabase = createClient();
+  await Promise.all([
+    supabase.from('calendar_tasks').delete().eq('user_id', userId),
+    supabase.from('opportunity_decisions').delete().eq('user_id', userId),
+  ]);
 }
 
 // Save goals

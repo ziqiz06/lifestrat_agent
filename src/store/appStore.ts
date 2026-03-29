@@ -23,6 +23,7 @@ import { rankOpportunities } from "@/lib/opportunityRanking";
 import { detectConflicts } from "@/lib/conflictDetection";
 import { deriveOpportunitiesFromEmails } from "@/lib/emailParser";
 import { generateDailyStrategy } from "@/lib/strategyEngine";
+import { getFixedEventsForDay, getAvailableTimeBlocks, extendTaskAndReflowDay, reflowCalendar } from "@/lib/dayPlanner";
 
 const DEFAULT_PROFILE: UserProfile = {
   name: "",
@@ -83,6 +84,7 @@ interface AppStore extends AppState {
   updateProfile: (profile: Partial<UserProfile>) => void;
   setOpportunityInterest: (id: string, interested: boolean | null) => void;
   addOpportunityToCalendar: (opportunityId: string) => void;
+  extendTask: (taskId: string, extraMinutes: number) => void;
   confirmCalendarTask: (taskId: string) => void;
   deleteCalendarTask: (taskId: string) => void;
   addCustomCalendarTask: (task: Omit<CalendarTask, "id">) => void;
@@ -294,7 +296,8 @@ Format your response as:
         const profile = { ...get().profile, ...partial };
         const rankedOpps = rankOpportunities(get().opportunities, profile);
         const strategy = generateDailyStrategy(rankedOpps, profile);
-        set({ profile, opportunities: rankedOpps, dailyStrategy: strategy });
+        const reflowed = reflowCalendar(get().calendarTasks, profile);
+        set({ profile, opportunities: rankedOpps, dailyStrategy: strategy, calendarTasks: reflowed, conflicts: detectConflicts(reflowed) });
       },
 
       setOpportunityInterest: (id, interested) => {
@@ -308,35 +311,85 @@ Format your response as:
       addOpportunityToCalendar: (opportunityId) => {
         const opp = get().opportunities.find((o) => o.id === opportunityId);
         if (!opp || !opp.deadline) return;
+        const profile = get().profile;
 
-        const type =
-          opp.category === "internship_application"
-            ? ("internship_application" as const)
-            : opp.category === "networking"
-              ? ("networking" as const)
-              : opp.category === "professional_event"
-                ? ("workshop" as const)
-                : opp.category === "classes"
-                  ? ("class" as const)
-                  : ("other" as const);
+        // Categories whose events happen at a fixed real-world time
+        const FIXED_TIME_CATEGORIES = new Set([
+          'networking', 'professional_event', 'classes', 'entertainment',
+        ]);
 
-        const color: Record<string, string> = {
-          internship_application: "#10b981",
-          networking: "#ec4899",
-          workshop: "#6366f1",
-          class: "#3b82f6",
-          other: "#6b7280",
+        const typeMap: Record<string, CalendarTask['type']> = {
+          internship_application: 'internship_application',
+          internship_research: 'company_research',
+          networking: 'networking',
+          professional_event: 'workshop',
+          classes: 'class',
+          deadline: 'deadline',
+          entertainment: 'entertainment',
         };
+        const type = typeMap[opp.category] ?? 'other';
+
+        const colorMap: Record<string, string> = {
+          internship_application: '#10b981',
+          company_research: '#8b5cf6',
+          networking: '#ec4899',
+          workshop: '#6366f1',
+          class: '#3b82f6',
+          deadline: '#ef4444',
+          entertainment: '#f59e0b',
+          other: '#6b7280',
+        };
+
+        const durationMin = Math.round(opp.estimatedHours * 60);
+
+        const calcEnd = (start: string, mins: number): string => {
+          const [sh, sm] = start.split(':').map(Number);
+          const total = sh * 60 + sm + mins;
+          return `${String(Math.min(Math.floor(total / 60), 23)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+        };
+
+        let startTime: string;
+        let endTime: string;
+        let taskFlex: CalendarTask['flex'];
+
+        if (opp.eventTime) {
+          // ── Fixed-time event: email contains a real clock time ──────────────
+          // Place it at that exact time — do NOT look for a flexible slot.
+          startTime = opp.eventTime;
+          endTime = opp.eventEndTime ?? calcEnd(startTime, durationMin);
+          taskFlex = 'fixed';
+        } else if (!FIXED_TIME_CATEGORIES.has(opp.category)) {
+          // ── Flexible task: find the first open slot on the deadline day ─────
+          const fixedEvents = getFixedEventsForDay(get().calendarTasks, opp.deadline);
+          const blocks = getAvailableTimeBlocks(fixedEvents, profile, opp.deadline);
+          const slot = blocks.find((b) => b.durationMinutes >= durationMin);
+          if (slot) {
+            startTime = slot.startTime;
+            endTime = calcEnd(startTime, durationMin);
+          } else {
+            // Day is full — fall back to preferred start and let conflict detection flag it
+            startTime = profile.preferredStartTime || '09:00';
+            endTime = calcEnd(startTime, durationMin);
+          }
+          taskFlex = 'flexible';
+        } else {
+          // ── Fixed-time category but no parseable clock time in the email ────
+          // Best we can do: use preferred start time (user can drag it later)
+          startTime = profile.preferredStartTime || '09:00';
+          endTime = calcEnd(startTime, durationMin);
+          taskFlex = 'fixed';
+        }
 
         const newTask: CalendarTask = {
           id: `opp-task-${opportunityId}`,
           title: opp.title,
           type,
-          startTime: get().profile.preferredStartTime || "09:00",
-          endTime: "11:00",
+          flex: taskFlex,
+          startTime,
+          endTime,
           date: opp.deadline,
           opportunityId,
-          color: color[type] || "#6b7280",
+          color: colorMap[type] || '#6b7280',
           confirmed: false,
         };
 
@@ -347,9 +400,14 @@ Format your response as:
           calendarTasks: newTasks,
           conflicts,
           opportunities: state.opportunities.map((o) =>
-            o.id === opportunityId ? { ...o, addedToCalendar: true } : o,
+            o.id === opportunityId ? { ...o, addedToCalendar: true } : o
           ),
         }));
+      },
+
+      extendTask: (taskId, extraMinutes) => {
+        const newTasks = extendTaskAndReflowDay(get().calendarTasks, taskId, extraMinutes, get().profile);
+        set({ calendarTasks: newTasks, conflicts: detectConflicts(newTasks) });
       },
 
       confirmCalendarTask: (taskId) => {
@@ -396,13 +454,20 @@ Format your response as:
         if (!conflict) return;
         const removeTaskId =
           keepTaskId === conflict.taskAId ? conflict.taskBId : conflict.taskAId;
-        const newTasks = get().calendarTasks.filter(
-          (t) => t.id !== removeTaskId,
-        );
-        set({
+        const removedTask = get().calendarTasks.find((t) => t.id === removeTaskId);
+        const newTasks = get().calendarTasks.filter((t) => t.id !== removeTaskId);
+        set((state) => ({
           calendarTasks: newTasks,
           conflicts: detectConflicts(newTasks),
-        });
+          // If removed task was linked to an opportunity, clear its addedToCalendar flag
+          opportunities: removedTask?.opportunityId
+            ? state.opportunities.map((o) =>
+                o.id === removedTask.opportunityId
+                  ? { ...o, addedToCalendar: false }
+                  : o
+              )
+            : state.opportunities,
+        }));
       },
 
       confirmGoal: (goalId, confirmed) => {

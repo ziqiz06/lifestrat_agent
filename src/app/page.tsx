@@ -113,37 +113,41 @@ export default function Home() {
 
       // Restore profile from Supabase
       completeOnboarding(savedProfile);
-      setPhase("app");
 
-      // Restore decisions, tasks, goals in background
-      const decisions = await loadOpportunityDecisions(uid);
-      useAppStore.setState((state) => ({
-        opportunities: state.opportunities.map((o) => {
-          const d = decisions[o.id];
-          return d
-            ? {
-                ...o,
-                interested: d.interested,
-                addedToCalendar: d.addedToCalendar,
-              }
-            : o;
-        }),
-      }));
+      // Load ALL data before transitioning — prevents auto-save overwriting restored state
+      const [decisions, calendarData, savedGoals] = await Promise.all([
+        loadOpportunityDecisions(uid),
+        loadCalendarTasks(uid),
+        loadGoals(uid),
+      ]);
 
-      const { added, removedIds } = await loadCalendarTasks(uid);
+      // Apply everything at once
       useAppStore.setState((state) => {
-        const removedSet = new Set(removedIds);
+        // Restore opportunity decisions
+        const updatedOpps = state.opportunities.map((o) => {
+          const d = decisions[o.id];
+          return d ? { ...o, interested: d.interested, addedToCalendar: d.addedToCalendar } : o;
+        });
+
+        // Rebuild calendar: start from mock, remove deleted, add saved user tasks
+        const removedSet = new Set(calendarData.removedIds);
         const existingIds = new Set(state.calendarTasks.map((t) => t.id));
-        // Remove mock tasks the user deleted, add user-added tasks back
         const merged = [
           ...state.calendarTasks.filter((t) => !removedSet.has(t.id)),
-          ...added.filter((t) => !existingIds.has(t.id)),
+          ...calendarData.added.filter((t) => !existingIds.has(t.id)),
         ];
-        return { calendarTasks: merged, conflicts: detectConflicts(merged) };
+
+        return {
+          opportunities: updatedOpps,
+          calendarTasks: merged,
+          conflicts: detectConflicts(merged),
+        };
       });
 
-      const savedGoals = await loadGoals(uid);
       if (savedGoals) setGoals(savedGoals);
+
+      // Transition AFTER all data is applied — prevents auto-save race condition
+      setPhase('app');
     } catch (e) {
       console.warn("Supabase sync error (non-fatal):", e);
       // Fall back to local state

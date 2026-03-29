@@ -43,7 +43,7 @@ function PriorityBadge({ priority }: { priority: number }) {
 }
 
 function OpportunityCard({ opp }: { opp: Opportunity }) {
-  const { setOpportunityInterest, addOpportunityToCalendar } = useAppStore();
+  const { setOpportunityInterest, addOpportunityToCalendar, deleteCalendarTask } = useAppStore();
 
   return (
     <div
@@ -103,17 +103,36 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
           </button>
         </div>
       ) : opp.interested === true ? (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm text-indigo-400">✓ Interested</span>
           {opp.addedToCalendar ? (
-            <span className="ml-auto text-xs text-green-400">
-              📅 Added to calendar
-            </span>
-          ) : opp.deadline ? (
-            <span className="ml-auto text-xs text-gray-500">
-              No deadline — not scheduled
-            </span>
-          ) : null}
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-xs text-green-400">📅 On calendar</span>
+              <button
+                onClick={() => deleteCalendarTask(`opp-task-${opp.id}`)}
+                className="text-xs text-gray-500 hover:text-red-400 transition-colors"
+              >
+                Remove ✕
+              </button>
+            </div>
+          ) : (
+            <div className="ml-auto flex items-center gap-2">
+              {!opp.deadline && (
+                <span className="text-xs text-gray-600">No deadline</span>
+              )}
+              {opp.deadline && (
+                <span className="text-xs text-yellow-500">⚠ Time conflict — removed</span>
+              )}
+              {opp.deadline && (
+                <button
+                  onClick={() => addOpportunityToCalendar(opp.id)}
+                  className="text-xs bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-600/50 rounded px-2 py-0.5 transition-colors"
+                >
+                  + Add back
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex items-center justify-between">
