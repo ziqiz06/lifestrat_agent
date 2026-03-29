@@ -39,7 +39,7 @@ function GreetingBanner() {
     }
   }, [profile.timezone, updateProfile]);
 
-  const name = character?.name || profile.name;
+  const name = profile.name;
   const moodLabel =
     profile.scheduleIntensity === "intense"
       ? "🔥 Intense mode — let's push today."
@@ -188,8 +188,16 @@ function CharacterMiniCard() {
 
 // ── Schedule + Goals (side by side) ──────────────────────────────────────────
 function ScheduleAndGoals() {
-  const { calendarTasks, goals, setActiveTab, confirmGoal, conflicts } =
-    useAppStore();
+  const {
+    calendarTasks,
+    goals,
+    setActiveTab,
+    confirmGoal,
+    conflicts,
+    addGoal,
+  } = useAppStore();
+  const [newGoalText, setNewGoalText] = useState("");
+  const [goalInputOpen, setGoalInputOpen] = useState(false);
 
   // Sort all tasks chronologically and take the soonest 5
   const upcoming = [...calendarTasks]
@@ -290,6 +298,63 @@ function ScheduleAndGoals() {
             ))}
           </div>
         )}
+
+        {/* Add goal */}
+        <div className="mt-3 pt-3 border-t border-gray-700/60">
+          {!goalInputOpen ? (
+            <button
+              onClick={() => setGoalInputOpen(true)}
+              className="w-full text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 rounded-lg px-3 py-2 transition-colors text-left flex items-center gap-2"
+            >
+              <span className="text-gray-600">+</span> Add a goal…
+            </button>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newGoalText.trim()) {
+                  addGoal(newGoalText.trim());
+                  setNewGoalText("");
+                  setGoalInputOpen(false);
+                }
+              }}
+              className="flex gap-2"
+            >
+              <input
+                autoFocus
+                type="text"
+                maxLength={120}
+                className="flex-1 bg-gray-700 text-white text-xs rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none placeholder-gray-500"
+                placeholder="e.g. Reach out to 2 new contacts this week"
+                value={newGoalText}
+                onChange={(e) => setNewGoalText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setGoalInputOpen(false);
+                    setNewGoalText("");
+                  }
+                }}
+              />
+              <button
+                type="submit"
+                disabled={!newGoalText.trim()}
+                className="shrink-0 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-lg px-3 py-2 transition-colors font-medium"
+              >
+                Add
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGoalInputOpen(false);
+                  setNewGoalText("");
+                }}
+                className="shrink-0 text-xs text-gray-500 hover:text-gray-300 rounded-lg px-2 py-2 transition-colors"
+              >
+                ✕
+              </button>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   );

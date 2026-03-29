@@ -1,13 +1,21 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { AppState, UserProfile, Goal, CalendarTask, Character } from "@/types";
+import {
+  AppState,
+  UserProfile,
+  Goal,
+  CalendarTask,
+  Character,
+  CharacterAppearance,
+} from "@/types";
 import {
   computeStats,
   getLevel,
   getArchetype,
   detectSignals,
   seedHistory,
+  DEFAULT_APPEARANCE,
 } from "@/lib/characterEngine";
 import { mockEmails } from "@/data/mockEmails";
 import { mockCalendarTasks } from "@/data/mockCalendar";
@@ -84,8 +92,9 @@ interface AppStore extends AppState {
   setGoals: (goals: Goal[]) => void;
   computeStrategy: () => void;
   resetStore: () => void;
-  createCharacter: (name: string) => void;
+  createCharacter: (name: string, appearance?: CharacterAppearance) => void;
   refreshCharacterStats: () => void;
+  addGoal: (text: string) => void;
 }
 
 export const useAppStore = create<AppStore>()(
@@ -109,7 +118,7 @@ export const useAppStore = create<AppStore>()(
 
       setActiveTab: (tab) => set({ activeTab: tab }),
 
-      createCharacter: (name) => {
+      createCharacter: (name, appearance = DEFAULT_APPEARANCE) => {
         const tasks = get().calendarTasks;
         const stats = computeStats(tasks);
         const level = getLevel(stats);
@@ -117,8 +126,26 @@ export const useAppStore = create<AppStore>()(
         const signals = detectSignals(stats);
         const statHistory = seedHistory(stats);
         set({
-          character: { name, stats, level, archetype, signals, statHistory },
+          character: {
+            name,
+            stats,
+            level,
+            archetype,
+            signals,
+            statHistory,
+            appearance,
+          },
         });
+      },
+
+      addGoal: (text) => {
+        const newGoal: Goal = {
+          id: `custom-${Date.now()}`,
+          text,
+          confirmed: null,
+          addedToPlan: false,
+        };
+        set((state) => ({ goals: [...state.goals, newGoal] }));
       },
 
       refreshCharacterStats: () => {

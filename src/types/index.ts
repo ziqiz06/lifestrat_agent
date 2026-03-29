@@ -168,6 +168,16 @@ export interface StatSnapshot {
   stats: CharacterStats;
 }
 
+export type HairStyle = "medium" | "short" | "long" | "spiky";
+export type EyeStyle = "default" | "wide" | "narrow";
+export type FaceShape = "round" | "angular" | "soft";
+
+export interface CharacterAppearance {
+  hairStyle: HairStyle;
+  eyeStyle: EyeStyle;
+  faceShape: FaceShape;
+}
+
 export interface Character {
   name: string;
   stats: CharacterStats;
@@ -175,4 +185,5 @@ export interface Character {
   archetype: string;
   signals: StateSignal[];
   statHistory: StatSnapshot[];
+  appearance?: CharacterAppearance; // optional for backward compat
 }
