@@ -32,15 +32,18 @@ function ProposalModal({ opp, onClose }: { opp: Opportunity; onClose: () => void
     [],
   );
 
-  const [title, setTitle]       = useState(opp.title);
-  const [editing, setEditing]   = useState(false);
-  const [startTime, setStart]   = useState(proposal?.startTime ?? "09:00");
-  const [endTime, setEnd]       = useState(proposal?.endTime   ?? "10:00");
-  const [error, setError]       = useState("");
+  const today = new Date().toISOString().slice(0, 10);
+
+  const [title, setTitle]         = useState(opp.title);
+  const [editing, setEditing]     = useState(false);
+  const [startTime, setStart]     = useState(proposal?.startTime ?? "09:00");
+  const [endTime, setEnd]         = useState(proposal?.endTime   ?? "10:00");
+  const [manualDate, setManualDate] = useState(today);
+  const [error, setError]         = useState("");
 
   // Live conflict check against existing calendar tasks
   const conflicts = useMemo(() => {
-    const date = proposal?.date ?? opp.deadline;
+    const date = proposal?.date ?? (opp.deadline || manualDate);
     if (!date) return [];
     const ts = timeToMinutes(startTime);
     const te = timeToMinutes(endTime);
@@ -48,10 +51,9 @@ function ProposalModal({ opp, onClose }: { opp: Opportunity; onClose: () => void
       if (t.date !== date) return false;
       return ts < timeToMinutes(t.endTime) && te > timeToMinutes(t.startTime);
     });
-  }, [startTime, endTime, calendarTasks, proposal, opp.deadline]);
+  }, [startTime, endTime, calendarTasks, proposal, opp.deadline, manualDate]);
 
   const handleConfirm = () => {
-    if (!proposal) { onClose(); return; }
     if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
       setError("End time must be after start time.");
       return;
@@ -63,6 +65,7 @@ function ProposalModal({ opp, onClose }: { opp: Opportunity; onClose: () => void
       title: title.trim() || undefined,
       durationMinutes: Math.max(timeToMinutes(endTime) - timeToMinutes(startTime), 15),
       confirmed: true,
+      date: proposal ? undefined : manualDate,
     });
     onClose();
   };
@@ -84,16 +87,67 @@ function ProposalModal({ opp, onClose }: { opp: Opportunity; onClose: () => void
     return (
       <div className={backdrop} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
         <div className={card}>
-          <div className="h-1 w-full bg-gray-700" />
-          <div className="p-5 space-y-3">
-            <p className="text-sm text-gray-400" style={MONO}>
-              No deadline is set for this item — it cannot be placed on the calendar automatically.
-            </p>
-            <button onClick={onClose}
-              className="w-full py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 text-sm border border-gray-600 transition-colors"
-              style={MONO}>
-              Close
-            </button>
+          <div className="h-1 w-full bg-gray-600" />
+          <div className="p-5 space-y-4">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-1" style={MONO}>
+                Schedule Manually
+              </p>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full bg-transparent text-white text-sm font-semibold border-b border-gray-700 focus:border-indigo-500 focus:outline-none pb-0.5"
+                style={MONO}
+                placeholder="Calendar label"
+              />
+            </div>
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs text-gray-500 mb-0.5" style={MONO}>Date</label>
+                <input type="date" value={manualDate}
+                  onChange={(e) => { setManualDate(e.target.value); setError(""); }}
+                  className="w-full bg-gray-900 text-white text-sm px-2 py-1.5 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                  style={MONO} />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-500 mb-0.5" style={MONO}>Start</label>
+                  <input type="time" value={startTime}
+                    onChange={(e) => { setStart(e.target.value); setError(""); }}
+                    className="w-full bg-gray-900 text-white text-sm px-2 py-1.5 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                    style={MONO} />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-500 mb-0.5" style={MONO}>End</label>
+                  <input type="time" value={endTime}
+                    onChange={(e) => { setEnd(e.target.value); setError(""); }}
+                    className="w-full bg-gray-900 text-white text-sm px-2 py-1.5 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                    style={MONO} />
+                </div>
+              </div>
+            </div>
+            {conflicts.length > 0 && (
+              <div className="text-xs text-orange-300 border border-orange-800/50 bg-orange-950/30 px-3 py-2" style={MONO}>
+                ⚠ Overlaps: {conflicts.map((c) => `"${c.title}"`).join(", ")}. Confirm anyway or edit the time.
+              </div>
+            )}
+            {error && <p className="text-xs text-red-400" style={MONO}>{error}</p>}
+            <div className="flex gap-2 pt-1">
+              <button onClick={onClose}
+                className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 text-sm border border-gray-600 transition-colors"
+                style={MONO}>
+                Cancel
+              </button>
+              <button onClick={handleConfirm}
+                className={`flex-1 py-2 text-white text-sm font-medium transition-colors ${
+                  conflicts.length > 0
+                    ? "bg-orange-700 hover:bg-orange-600"
+                    : "bg-indigo-600 hover:bg-indigo-500"
+                }`}
+                style={MONO}>
+                Add to Calendar
+              </button>
+            </div>
           </div>
         </div>
       </div>

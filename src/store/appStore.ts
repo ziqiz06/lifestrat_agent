@@ -100,6 +100,7 @@ interface AppStore extends AppState {
     durationMinutes?: number;
     title?: string;
     confirmed?: boolean;       // true = user already confirmed in ProposalModal
+    date?: string;             // override date (for deadline-less manual scheduling)
   }) => void;
   extendTask: (taskId: string, extraMinutes: number) => void;
   confirmCalendarTask: (taskId: string) => void;
@@ -372,8 +373,10 @@ Format your response as:
 
       addOpportunityToCalendar: (opportunityId, opts) => {
         const opp = get().opportunities.find((o) => o.id === opportunityId);
-        if (!opp || !opp.deadline) return;
-        if (isOpportunityExpired(opp)) return; // refuse to schedule past-deadline items
+        if (!opp) return;
+        const taskDate = opts?.date ?? opp.deadline;
+        if (!taskDate) return;
+        if (opp.deadline && isOpportunityExpired(opp)) return; // refuse to schedule past-deadline items
         const profile = get().profile;
         const taskTitle = opts?.title ?? opp.title;
 
@@ -418,8 +421,8 @@ Format your response as:
             startTime = opts.startTime;
             endTime   = opts.endTime ?? calcEnd(startTime, durationMin);
           } else {
-            const fixedEvents = getFixedEventsForDay(get().calendarTasks, opp.deadline);
-            const allBlocks   = getAvailableTimeBlocks(fixedEvents, profile, opp.deadline);
+            const fixedEvents = getFixedEventsForDay(get().calendarTasks, taskDate);
+            const allBlocks   = getAvailableTimeBlocks(fixedEvents, profile, taskDate);
             const cutoffMins  = (opp.itemType === 'deadline' && opp.dueAt)
               ? timeToMinutes(opp.dueAt)
               : timeToMinutes(profile.preferredEndTime || '22:00');
@@ -466,7 +469,7 @@ Format your response as:
           flex: taskFlex,
           startTime,
           endTime,
-          date: opp.deadline,
+          date: taskDate,
           opportunityId,
           color: colorMap[type] || '#6b7280',
           confirmed: opts?.confirmed ?? false,
