@@ -26,7 +26,20 @@ export interface UserProfile {
   dinnerTime: string;            // "HH:MM" e.g. "18:30" (empty = skip)
   dinnerDurationMinutes: number; // e.g. 60
   scheduleBlocks: ScheduleBlock[]; // manually added time blocks to show as unavailable on calendar
+  /** Weekly windows the user is actually free to do flexible work, e.g. Mon 16:00–18:00. */
+  workAvailability: AvailabilityWindow[];
   completed: boolean;
+}
+
+/**
+ * A single weekly "I can work" window, e.g. Monday 16:00–18:00.
+ * Always a weekly template keyed by day-of-week — not a one-off date.
+ */
+export interface AvailabilityWindow {
+  id: string;
+  dayOfWeek: number; // 0 = Sun … 6 = Sat
+  startTime: string; // "HH:MM"
+  endTime: string;   // "HH:MM"
 }
 
 export type EmailCategory =
@@ -261,6 +274,7 @@ export interface AppState {
   activeTab:
     | "dashboard"
     | "calendar"
+    | "routines"
     | "opportunities"
     | "preferences"
     | "character";

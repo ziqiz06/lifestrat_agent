@@ -8,6 +8,7 @@ import OnboardingSurvey from "@/components/onboarding/OnboardingSurvey";
 import Navigation from "@/components/layout/Navigation";
 import Dashboard from "@/components/dashboard/Dashboard";
 import CalendarView from "@/components/calendar/CalendarView";
+import RoutinesView from "@/components/routines/RoutinesView";
 import OpportunitiesView from "@/components/opportunities/OpportunitiesView";
 import PreferencesView from "@/components/preferences/PreferencesView";
 import CharacterView from "@/components/character/CharacterView";
@@ -282,6 +283,7 @@ export default function Home() {
       <main className="pb-8">
         {activeTab === "dashboard" && <Dashboard />}
         {activeTab === "calendar" && <CalendarView />}
+        {activeTab === "routines" && <RoutinesView />}
         {activeTab === "opportunities" && <OpportunitiesView />}
         {activeTab === "preferences" && <PreferencesView userId={userId} />}
         {activeTab === "character" && <CharacterView />}

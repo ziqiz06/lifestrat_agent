@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAppStore } from "@/store/appStore";
-import { CalendarTask, Conflict, RecurrenceRule, TaskType } from "@/types";
+import { CalendarTask, Conflict, TaskType, AvailabilityWindow } from "@/types";
 import { scheduleBlockAppliesToDate } from "@/lib/dayPlanner";
 import { detectOverflow } from "@/lib/dayPlanner";
 import UndoToast from "@/components/ui/UndoToast";
@@ -223,13 +223,6 @@ interface AddModalState {
   startTime: string;
 }
 
-// ── Recurrence form state (used inside AddEventModal) ──────────────────────────
-interface RecurrenceFormState {
-  frequency: RecurrenceRule['frequency'];
-  daysOfWeek: number[];
-  endDate: string;
-}
-
 // ── TaskBlock ──────────────────────────────────────────────────────────────────
 function TaskBlock({
   laid,
@@ -302,9 +295,9 @@ function TaskBlock({
         left: `calc(${leftPct}% + 2px)`,
         width: `calc(${widthPct}% - 4px)`,
         backgroundColor: bg,
-        border: confirmed
-          ? `1px solid ${borderColor}50`
-          : `1.5px dashed ${borderColor}70`,
+        borderTop: confirmed ? `1px solid ${borderColor}50` : `1.5px dashed ${borderColor}70`,
+        borderRight: confirmed ? `1px solid ${borderColor}50` : `1.5px dashed ${borderColor}70`,
+        borderBottom: confirmed ? `1px solid ${borderColor}50` : `1.5px dashed ${borderColor}70`,
         borderLeft: `3px solid ${leftBorderColor}`,
         borderRadius: 6,
         overflow: "hidden",
@@ -437,20 +430,6 @@ function AddEventModal({
   const [type, setType] = useState<TaskType>("other");
   const [flex, setFlex] = useState<'fixed' | 'flexible'>('fixed');
   const [error, setError] = useState("");
-  const [recurrence, setRecurrence] = useState<RecurrenceFormState>({
-    frequency: 'none',
-    daysOfWeek: [],
-    endDate: '',
-  });
-
-  function toggleDow(dow: number) {
-    setRecurrence((r) => ({
-      ...r,
-      daysOfWeek: r.daysOfWeek.includes(dow)
-        ? r.daysOfWeek.filter((d) => d !== dow)
-        : [...r.daysOfWeek, dow],
-    }));
-  }
 
   const selectedType =
     TYPE_OPTIONS.find((o) => o.value === type) ??
@@ -481,18 +460,6 @@ function AddEventModal({
       setError("End time must be after start time.");
       return;
     }
-    const recurrenceRule: RecurrenceRule | undefined =
-      recurrence.frequency === 'none'
-        ? undefined
-        : {
-            frequency: recurrence.frequency,
-            interval: 1,
-            daysOfWeek:
-              recurrence.frequency === 'weekly' && recurrence.daysOfWeek.length > 0
-                ? recurrence.daysOfWeek
-                : undefined,
-            endDate: recurrence.endDate || undefined,
-          };
     onAdd({
       title: title.trim(),
       description: description.trim() || undefined,
@@ -503,7 +470,6 @@ function AddEventModal({
       flex,
       color: selectedType.color,
       confirmed: true,
-      recurrence: recurrenceRule,
     });
     onClose();
   }
@@ -654,62 +620,10 @@ function AddEventModal({
             </button>
           </div>
 
-          {/* Recurrence */}
-          <div>
-            <label className="block text-sm text-gray-400 mb-1.5" style={MONO}>Recurrence</label>
-            <select
-              className="w-full bg-gray-800 text-white px-3 py-2 text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none"
-              style={MONO}
-              value={recurrence.frequency}
-              onChange={(e) =>
-                setRecurrence((r) => ({
-                  ...r,
-                  frequency: e.target.value as RecurrenceRule['frequency'],
-                  daysOfWeek: [],
-                }))
-              }
-            >
-              <option value="none">Does not repeat</option>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly (same day)</option>
-            </select>
-
-            {/* Day-of-week selector (weekly only) */}
-            {recurrence.frequency === 'weekly' && (
-              <div className="flex gap-1.5 mt-2">
-                {DOW_LABELS.map((label, dow) => (
-                  <button
-                    key={dow}
-                    type="button"
-                    onClick={() => toggleDow(dow)}
-                    className={`w-8 h-8 text-xs font-bold transition-colors border ${
-                      recurrence.daysOfWeek.includes(dow)
-                        ? 'bg-indigo-600 text-white border-indigo-500'
-                        : 'bg-gray-800 text-gray-400 border-gray-600 hover:border-gray-500'
-                    }`}
-                    style={MONO}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* End date (daily / weekly / monthly) */}
-            {recurrence.frequency !== 'none' && (
-              <div className="mt-2">
-                <label className="block text-xs text-gray-500 mb-1" style={MONO}>Ends on (optional)</label>
-                <input
-                  type="date"
-                  className="w-full bg-gray-800 text-white px-3 py-1.5 text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none"
-                  style={MONO}
-                  value={recurrence.endDate}
-                  onChange={(e) => setRecurrence((r) => ({ ...r, endDate: e.target.value }))}
-                />
-              </div>
-            )}
-          </div>
+          {/* Repeating event? Point to Routines instead of duplicating recurrence UI here. */}
+          <p className="text-xs text-gray-600" style={MONO}>
+            Need this to repeat (a class, gym, etc.)? Add it as a routine from the Routines tab instead.
+          </p>
 
           {/* Validation error */}
           {error && <p className="text-sm text-red-400" style={MONO}>{error}</p>}
@@ -730,6 +644,152 @@ function AddEventModal({
               style={{ backgroundColor: selectedType.color, ...MONO }}
             >
               Add to Calendar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── AvailabilityModal ─────────────────────────────────────────────────────────
+const AVAILABILITY_COLOR = "#22c55e";
+
+function AvailabilityModal({
+  onClose,
+  onAdd,
+}: {
+  onClose: () => void;
+  onAdd: (windows: Omit<AvailabilityWindow, "id">[]) => void;
+}) {
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
+  const [startTime, setStartTime] = useState("16:00");
+  const [endTime, setEndTime] = useState("18:00");
+  const [error, setError] = useState("");
+
+  function toggleDow(dow: number) {
+    setDaysOfWeek((d) => (d.includes(dow) ? d.filter((x) => x !== dow) : [...d, dow]));
+  }
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (daysOfWeek.length === 0) {
+      setError("Pick at least one day.");
+      return;
+    }
+    if (toMins(endTime) <= toMins(startTime)) {
+      setError("End time must be after start time.");
+      return;
+    }
+    onAdd(daysOfWeek.map((dayOfWeek) => ({ dayOfWeek, startTime, endTime })));
+    onClose();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-md bg-gray-900 border border-gray-700 shadow-2xl overflow-hidden">
+        <div className="h-1 w-full" style={{ backgroundColor: AVAILABILITY_COLOR }} />
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-white uppercase tracking-wider" style={MONO}>
+                Add Availability
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5" style={MONO}>
+                When are you actually free to work? The AI plan only schedules flexible tasks inside these windows.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-white hover:bg-gray-700 transition-colors text-sm shrink-0"
+              style={MONO}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Days of week */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-1.5" style={MONO}>Days</label>
+            <div className="flex gap-1.5">
+              {DOW_LABELS.map((label, dow) => (
+                <button
+                  key={dow}
+                  type="button"
+                  onClick={() => toggleDow(dow)}
+                  className={`w-9 h-9 text-xs font-bold transition-colors border ${
+                    daysOfWeek.includes(dow)
+                      ? "bg-green-600 text-white border-green-500"
+                      : "bg-gray-800 text-gray-400 border-gray-600 hover:border-gray-500"
+                  }`}
+                  style={MONO}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Start / End time */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1.5" style={MONO}>Start time</label>
+              <input
+                type="time"
+                className="w-full bg-gray-800 text-white px-3 py-2 text-base border border-gray-600 focus:border-green-500 focus:outline-none"
+                style={MONO}
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1.5" style={MONO}>End time</label>
+              <input
+                type="time"
+                className="w-full bg-gray-800 text-white px-3 py-2 text-base border border-gray-600 focus:border-green-500 focus:outline-none"
+                style={MONO}
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-600" style={MONO}>
+            Add more than one window per day (e.g. 4–6pm and 7–10pm) by adding availability twice.
+          </p>
+
+          {error && <p className="text-sm text-red-400" style={MONO}>{error}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-base border border-gray-600 transition-colors"
+              style={MONO}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="flex-1 py-2 text-white text-base font-medium transition-colors"
+              style={{ backgroundColor: AVAILABILITY_COLOR, ...MONO }}
+            >
+              Add Availability
             </button>
           </div>
         </form>
@@ -1201,6 +1261,51 @@ function UnavailableBlock({ startTime, endTime, label }: { startTime: string; en
   );
 }
 
+// ── AvailabilityBand ──────────────────────────────────────────────────────────
+/** Visual counterpart to UnavailableBlock — marks a window the user is available to work. */
+function AvailabilityBand({
+  startTime,
+  endTime,
+  onDelete,
+}: {
+  startTime: string;
+  endTime: string;
+  onDelete: () => void;
+}) {
+  const top = topPx(startTime);
+  const h = heightPx(startTime, endTime);
+  const [hovered, setHovered] = useState(false);
+  if (h <= 0) return null;
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: "absolute", top, height: h, left: 0, right: 0, zIndex: 0,
+        backgroundColor: "rgba(34,197,94,0.08)",
+        border: "1px dashed rgba(34,197,94,0.4)",
+        pointerEvents: "auto", // needed so hover reveals the delete button; clicks not on the button bubble up to add an event as usual
+      }}
+    >
+      <div className="flex items-center justify-between px-1.5">
+        <span style={{ fontSize: 9, color: "rgba(74,222,128,0.85)", lineHeight: "14px", userSelect: "none" }}>
+          Available
+        </span>
+        {hovered && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            style={{ pointerEvents: "auto" }}
+            className="text-[10px] text-green-400/70 hover:text-red-400 leading-none px-1"
+            title="Remove availability window"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function addMinutes(time: string, mins: number): string {
   const [h, m] = time.split(":").map(Number);
   const total = h * 60 + m + mins;
@@ -1213,6 +1318,7 @@ export default function CalendarView() {
     calendarTasks,
     conflicts,
     profile,
+    updateProfile,
     resolveConflict,
     confirmCalendarTask,
     deleteCalendarTask,
@@ -1242,6 +1348,20 @@ export default function CalendarView() {
   const gridRef    = useRef<HTMLDivElement>(null);
   const droppedRef = useRef(false); // suppress click after drop
   const [addModal, setAddModal] = useState<AddModalState | null>(null);
+  const [availabilityModalOpen, setAvailabilityModalOpen] = useState(false);
+
+  function addAvailabilityWindows(windows: Omit<AvailabilityWindow, "id">[]) {
+    const next = [
+      ...(profile.workAvailability ?? []),
+      ...windows.map((w) => ({ ...w, id: crypto.randomUUID() })),
+    ];
+    updateProfile({ ...profile, workAvailability: next });
+  }
+
+  function removeAvailabilityWindow(id: string) {
+    const next = (profile.workAvailability ?? []).filter((w) => w.id !== id);
+    updateProfile({ ...profile, workAvailability: next });
+  }
 
   const weekDates = getWeekDates(weekOffset);
   // Expand recurring tasks into virtual instances for the current week
@@ -1434,6 +1554,16 @@ export default function CalendarView() {
             {aiPlanLoading ? "Planning…" : "AI Plan"}
           </button>
 
+          {/* Add availability button */}
+          <button
+            onClick={() => setAvailabilityModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 h-8 bg-green-700 hover:bg-green-600 text-white text-sm font-medium transition-colors"
+            style={MONO}
+            title="Mark hours you're actually free to work — the AI plan only schedules flexible tasks inside these"
+          >
+            <span className="text-base leading-none">+</span> Availability
+          </button>
+
           {/* Add event button */}
           <button
             onClick={() =>
@@ -1457,6 +1587,32 @@ export default function CalendarView() {
       {aiPlanLoading && (
         <div className="flex items-center gap-3 px-4 py-3 bg-violet-950/40 border border-violet-800/30 text-sm text-violet-400" style={MONO}>
           <span className="animate-pulse">Thinking through your schedule…</span>
+        </div>
+      )}
+
+      {/* ── Availability windows — always-reachable list, since the bands on the ─
+             grid below get covered by scheduled tasks and can become unclickable ── */}
+      {(profile.workAvailability ?? []).length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 px-1">
+          <span className="text-xs text-gray-500 uppercase tracking-wider" style={MONO}>Available:</span>
+          {[...(profile.workAvailability ?? [])]
+            .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.startTime.localeCompare(b.startTime))
+            .map((w) => (
+              <span
+                key={w.id}
+                className="flex items-center gap-1.5 text-xs bg-green-900/30 text-green-300 border border-green-700/40 pl-2 pr-1 py-1"
+                style={MONO}
+              >
+                {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][w.dayOfWeek]} {w.startTime}–{w.endTime}
+                <button
+                  onClick={() => removeAvailabilityWindow(w.id)}
+                  className="text-green-500/70 hover:text-red-400 transition-colors leading-none px-0.5"
+                  title="Remove this availability window"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
         </div>
       )}
 
@@ -1584,6 +1740,18 @@ export default function CalendarView() {
                     />
                   ))}
 
+                  {/* Availability bands — windows the user is free to work */}
+                  {(profile.workAvailability ?? [])
+                    .filter((w) => w.dayOfWeek === new Date(date + "T00:00:00").getDay())
+                    .map((w) => (
+                      <AvailabilityBand
+                        key={w.id}
+                        startTime={w.startTime}
+                        endTime={w.endTime}
+                        onDelete={() => removeAvailabilityWindow(w.id)}
+                      />
+                    ))}
+
                   {/* Unavailable blocks — sleep, meals */}
                   {profile.wakeTime && (
                     <UnavailableBlock startTime={`${String(START_HOUR).padStart(2,"0")}:00`} endTime={profile.wakeTime} label="Sleeping" />
@@ -1669,6 +1837,10 @@ export default function CalendarView() {
           <span className="text-[10px] px-1 bg-indigo-900/60 text-indigo-300 border border-indigo-700/50" style={MONO}>flex</span>
           <span className="text-sm text-gray-400" style={MONO}>Flexible · draggable</span>
         </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-5 h-3.5 rounded border border-dashed" style={{ borderColor: "rgba(34,197,94,0.5)", backgroundColor: "rgba(34,197,94,0.08)" }} />
+          <span className="text-sm text-gray-400" style={MONO}>Available to work</span>
+        </div>
         {[
           { label: "Internship", color: "#10b981" },
           { label: "Academic", color: "#3b82f6" },
@@ -1750,6 +1922,14 @@ export default function CalendarView() {
           initial={addModal}
           onClose={() => setAddModal(null)}
           onAdd={(task) => addCustomCalendarTask(task)}
+        />
+      )}
+
+      {/* ── Add Availability Modal ────────────────────────────────────────────── */}
+      {availabilityModalOpen && (
+        <AvailabilityModal
+          onClose={() => setAvailabilityModalOpen(false)}
+          onAdd={addAvailabilityWindows}
         />
       )}
 

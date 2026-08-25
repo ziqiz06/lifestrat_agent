@@ -52,6 +52,7 @@ const DEFAULT_PROFILE: UserProfile = {
   dinnerTime: "18:30",
   dinnerDurationMinutes: 60,
   scheduleBlocks: [],
+  workAvailability: [],
   completed: false,
 };
 
@@ -974,6 +975,18 @@ HARD RULE: Never mix modes in a single response. Pick one and follow it complete
           const doNotText = profile.doNotScheduleDays?.length
             ? profile.doNotScheduleDays.join(', ') : 'none';
 
+          // Per-weekday "available to work" windows (e.g. Mon 16:00–18:00, 19:00–22:00).
+          // Falls back to the flat preferred-work-window text when the user hasn't set any.
+          const availability = profile.workAvailability ?? [];
+          const availabilityText = availability.length > 0
+            ? DAYS.map((dayLabel, dow) => {
+                const windows = availability
+                  .filter(w => w.dayOfWeek === dow)
+                  .sort((a, b) => a.startTime.localeCompare(b.startTime));
+                return `  - ${dayLabel}: ${windows.length > 0 ? windows.map(w => `${w.startTime}–${w.endTime}`).join(', ') : 'none'}`;
+              }).join('\n')
+            : `  none set — use the general preferred work window (${profile.preferredStartTime ?? '09:00'}–${profile.preferredEndTime ?? '22:00'}) every day instead`;
+
           const budgetMap: Record<string, string> = {
             light: '4 hours/day', moderate: '6 hours/day',
             heavy: '8 hours/day', insane: '16 hours/day',
@@ -1060,9 +1073,11 @@ HARD RULE: Never mix modes in a single response. Pick one and follow it complete
                 const deadlineStr = deadline
                   ? `${deadline}${dueAt ? ` ${dueAt}` : ''}`
                   : 'none';
+                const priorityStr = opp?.priority != null ? ` | priority=${opp.priority}/10` : '';
                 return (
                   `  - id=${t.id} | ${t.title} | ${durationMin}min` +
                   ` | deadline=${deadlineStr}` +
+                  `${priorityStr}` +
                   ` | currentPlacement: ${t.date} ${t.startTime}–${t.endTime}` +
                   `${violationStr}` +
                   ` | type=${t.type} | color=${t.color}` +
@@ -1083,8 +1098,11 @@ Planning horizon: ${today} through ${horizon[horizon.length - 1]}.
 ## User Profile
 - ${mealsText}
 - Schedule intensity: ${profile.scheduleIntensity} (workload budget: ${budgetMap[profile.scheduleIntensity] ?? '6 hours/day'})
-- Preferred work window: ${profile.preferredStartTime ?? '09:00'} – ${profile.preferredEndTime ?? '22:00'}
+- Preferred work window (fallback only, used where no weekly availability window is set below): ${profile.preferredStartTime ?? '09:00'} – ${profile.preferredEndTime ?? '22:00'}
 - Do not schedule on: ${doNotText}
+
+## Weekly Work-Availability Windows (HARD CONSTRAINT — flexible tasks may ONLY be placed inside these windows for a given weekday, when the user has defined any for that day)
+${availabilityText}
 
 ## Additional Blocked Time (Schedule Blocks)
 ${blocksText}
@@ -1099,7 +1117,7 @@ ${flexText}
 ${pendingText}
 
 ## Instructions
-Apply all planning rules from your system prompt. Produce the optimal schedule for the flexible tasks above.
+Apply all planning rules from your system prompt, including the weekly availability windows above and the week-level priority-stacking rule. Produce the optimal schedule for the flexible tasks above.
 Return ONLY the JSON object — no markdown, no explanation.`;
 
           const res = await fetch('/api/ai/plan', {

@@ -87,6 +87,22 @@ export function getBlockedIntervalsForDay(profile: UserProfile, date: string): B
 }
 
 /**
+ * Returns the user's weekly "available to work" windows (in minutes-from-midnight)
+ * that apply to the given date's day-of-week, sorted by start time.
+ * Empty when the user hasn't defined any availability windows.
+ */
+export function getAvailabilityWindowsForDate(
+  profile: UserProfile,
+  date: string
+): { start: number; end: number }[] {
+  const dow = new Date(date + 'T00:00:00').getDay();
+  return (profile.workAvailability ?? [])
+    .filter((w) => w.dayOfWeek === dow)
+    .map((w) => ({ start: timeToMinutes(w.startTime), end: timeToMinutes(w.endTime) }))
+    .sort((a, b) => a.start - b.start);
+}
+
+/**
  * Returns fixed events for a given date, sorted by start time.
  */
 export function getFixedEventsForDay(tasks: CalendarTask[], date: string): CalendarTask[] {
@@ -104,10 +120,20 @@ export function getAvailableTimeBlocks(
   profile: UserProfile,
   date: string
 ): TimeBlock[] {
-  void date;
   const BUFFER = 15;
-  const dayStart = timeToMinutes(profile.preferredStartTime || '09:00');
-  const dayEnd = timeToMinutes(profile.preferredEndTime || '22:00');
+
+  // Outer bounds to search for free time within: once the user has defined ANY weekly
+  // work-availability windows, flexible work is confined to those windows only — a
+  // weekday with none defined gets zero flexible work, it does NOT fall back to the old
+  // flat preferred-window default. That default is only used when the user has never
+  // set any availability windows at all (keeps old profiles working unchanged).
+  const hasAnyAvailability = (profile.workAvailability ?? []).length > 0;
+  const outerWindows = hasAnyAvailability
+    ? getAvailabilityWindowsForDate(profile, date) // may be [] for this specific day — correct, means no flexible work today
+    : [{
+        start: timeToMinutes(profile.preferredStartTime || '09:00'),
+        end: timeToMinutes(profile.preferredEndTime || '22:00'),
+      }];
 
   // Build list of blocked intervals from fixed events
   const blocked: Array<{ start: number; end: number }> = fixedEvents.map((e) => ({
@@ -140,22 +166,27 @@ export function getAvailableTimeBlocks(
     }
   }
 
-  // Find free gaps between merged blocked intervals
+  // Find free gaps between merged blocked intervals, within each outer window
   const blocks: TimeBlock[] = [];
-  let cursor = dayStart;
-  for (const block of merged) {
-    if (block.start > cursor) {
-      const duration = block.start - cursor;
-      if (duration >= 30) {
-        blocks.push({ startTime: minutesToTime(cursor), endTime: minutesToTime(block.start), durationMinutes: duration });
+  for (const { start: winStart, end: winEnd } of outerWindows) {
+    let cursor = winStart;
+    for (const block of merged) {
+      if (block.end <= cursor) continue; // already consumed / entirely before this window
+      if (block.start >= winEnd) break;  // merged is sorted ascending — nothing more overlaps
+      if (block.start > cursor) {
+        const duration = block.start - cursor;
+        if (duration >= 30) {
+          blocks.push({ startTime: minutesToTime(cursor), endTime: minutesToTime(block.start), durationMinutes: duration });
+        }
       }
+      cursor = Math.max(cursor, block.end);
+      if (cursor >= winEnd) break;
     }
-    cursor = Math.max(cursor, block.end);
-  }
-  if (cursor < dayEnd) {
-    const duration = dayEnd - cursor;
-    if (duration >= 30) {
-      blocks.push({ startTime: minutesToTime(cursor), endTime: minutesToTime(dayEnd), durationMinutes: duration });
+    if (cursor < winEnd) {
+      const duration = winEnd - cursor;
+      if (duration >= 30) {
+        blocks.push({ startTime: minutesToTime(cursor), endTime: minutesToTime(winEnd), durationMinutes: duration });
+      }
     }
   }
 
@@ -330,9 +361,10 @@ export function detectOverflow(
   date: string,
   profile: UserProfile
 ): { fits: CalendarTask[]; overflow: CalendarTask[] } {
-  const dayStart = timeToMinutes(profile.preferredStartTime || '09:00');
-  const dayEnd = timeToMinutes(profile.preferredEndTime || '22:00');
-  const available = dayEnd - dayStart;
+  const hasAnyAvailability = (profile.workAvailability ?? []).length > 0;
+  const available = hasAnyAvailability
+    ? getAvailabilityWindowsForDate(profile, date).reduce((sum, w) => sum + (w.end - w.start), 0)
+    : timeToMinutes(profile.preferredEndTime || '22:00') - timeToMinutes(profile.preferredStartTime || '09:00');
   const dayTasks = tasks.filter((t) => t.date === date);
   const total = dayTasks.reduce((sum, t) => sum + timeToMinutes(t.endTime) - timeToMinutes(t.startTime), 0);
   if (total <= available) return { fits: dayTasks, overflow: [] };

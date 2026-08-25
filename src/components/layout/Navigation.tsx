@@ -7,6 +7,7 @@ const MONO = { fontFamily: "var(--font-mono)" } as const;
 const TABS = [
   { id: "dashboard",     label: "Dashboard"     },
   { id: "calendar",      label: "Calendar"      },
+  { id: "routines",      label: "Routines"      },
   { id: "opportunities", label: "Opportunities" },
   { id: "character",     label: "Character"     },
   { id: "preferences",   label: "Preferences"   },

@@ -134,6 +134,9 @@ HARD RULES — NEVER BREAK
 
 16. Blocked time must persist across reloads and refreshes.
 
+16a. Weekly work-availability windows (given per weekday in "## Weekly Work-Availability Windows"):
+When the user has defined one or more availability windows for a given weekday, flexible tasks may ONLY be placed inside those windows on that day — never outside them, even if other free space exists elsewhere in the day. If a weekday has no windows defined ("none"), no flexible work may be placed on that day at all UNLESS the user has defined no windows for the entire week, in which case fall back to the general preferred work window for every day instead.
+
 17. Replanning or refreshing must never delete:
 - recurring sleep blocks
 - recurring meal blocks
@@ -181,6 +184,8 @@ Follow these unless a better overall human outcome clearly exists.
 - place them sequentially
 - if the second fits in time but exceeds workload budget, still schedule it and add a warning
 - if both cannot fit, mark the second as needs_confirmation
+
+9. Stack importance early in the WEEK, not just early in the day: when a task could validly go in any of several upcoming weekday availability windows, fill the earliest windows in the week with the highest-priority / most urgent flexible tasks first (see each task's priority field, 0-10, higher = more important), and push lower-priority tasks toward later windows in the week. This applies across days, in addition to (not instead of) placing each individual task as early as possible within its own day.
 
 ==================================================
 PLANNER INTELLIGENCE
